@@ -1,0 +1,962 @@
+
+/*-------- custom design
+-------------------------------------------------- */
+
+h1,h2,h3,h4 {
+	color:#3057a8;
+	padding: 0 0 0 0;
+}
+h1 {
+	font-size: 27px;
+	margin: 0 0 15px 0;
+}
+h2 {
+	font-size: 20px;
+	margin: 0 0 15px 0;
+}
+h3 {
+	font-size: 18px;
+}
+option {
+	padding: 0px 5px;
+	border: 0px none;
+}
+
+
+#page {
+	width: 980px;
+	position: relative;
+	border: 1px solid #CECECE;
+	margin: 0 auto;
+}
+#cloud_top_menu {
+	position: relative;
+	background:#f0f0f0;
+	border-bottom: 1px solid #CECECE;
+}
+#cloud_logo {
+	width: 200px;
+	padding: 10px 0 10px 20px;
+	display: block;
+}
+#cloud_title {
+	position: absolute;
+	left: 190px;
+	top: 40px;
+	width: 170px;
+	height: 1px;
+	margin: 0;
+	z-index: 6;
+}
+#cloud_language_select {
+	position: absolute;
+	right: 20px;
+	top: 20px;
+}
+#cloud_language_select .htmlobject_box .right {
+	width: 100px;
+}
+
+
+#openqrm_enterprise_footer {
+	border-top:1px solid #cecece;
+	text-align: right;
+	padding: 10px 25px 10px 10px;
+	background: #F0F0F0;
+}
+
+#openqrm_enterprise_footer a {
+	padding: 0 0 0 30px;
+	color:#4C4C4C;
+	text-decoration: none;
+	font-size: 11px;
+}
+
+#cloud_no_available {
+	position: absolute;
+	left: 50px;
+	top: 50px;
+	width: 650px;
+	height: 20px;
+	margin: 0;
+	z-index: 6;
+}
+
+/* Misc */
+#buttons {
+	margin: 15px 0 0 0;
+}
+
+#misc_slot .submit,
+#buttons .submit {
+	font-size: 11px;
+	color:#4a4a4a;
+	padding: 10px;
+	border:1px solid #cecece;
+	background:url(/cloud-portal/img/bg-navi.png) repeat-x;
+}
+
+.error {
+	color: red;
+}
+
+.busy_appliance {
+	width: 66px;
+	height: 66px;
+	margin: 40px auto;
+	background: url(/cloud-portal/img/ajax-loader.gif) no-repeat center center;
+}
+
+/* modal dialog */
+.modal-overlay {
+	position: fixed;
+	top:0; 
+	left:0;
+	bottom: 0;
+	right: 0;
+	width: 100%; 
+	height:100%;
+	background: #999;
+	opacity:0.3; 
+	z-index: 10000;
+}
+.modal-box {
+	position: fixed;
+	width: 250px;
+	padding: 20px 30px;
+	font-size:13px;
+	border: 8px solid #999;
+	background: #ffffff;
+	text-align: center;
+	z-index: 10001;
+}
+.modal-box .ajax-loader {
+	margin: 20px auto;
+	z-index: 10002;
+}
+
+
+/* multi forms */
+.multi_action .htmlobject_box .left {
+	width: auto;
+	margin: 0 15px 0 0;
+}
+
+
+/* Profiles */
+#cloud_profiles .htmlobject_th.pr_description{
+	border-radius: 6px 0 0 0;
+}
+#cloud_profiles .htmlobject_td.pr_description div{
+	padding: 0;
+	/*height: 55px;*/
+	overflow: auto;
+}
+
+/* Home */
+#home_container {
+	padding: 10px 0 0 0;
+}
+#manage_list ul,
+#transaction_link ul {
+	display: block;
+	padding:0px;
+}
+#manage_list ul li,
+#transaction_link ul li {
+	background:url(/cloud-portal/img/arrow.png) right no-repeat;
+	color:#4a4a4a;
+	display: block;
+	float: none;
+	padding: 0 12px 0 0;
+	width: 147px;
+}
+#manage_list ul li a,
+#transaction_link ul li a {
+	color:#4a4a4a;
+	background:url(/cloud-portal/img/bg-navi.png) repeat-x;
+	padding: 10px 12px 10px 15px;
+	border-left:1px solid #cecece;
+	border-top:1px solid #cecece;
+	display: block;
+	text-decoration: none;
+	font-size: 11px;
+	width: 120px;
+}
+#manage_list  ul li a:hover,
+#transaction_link ul li a:hover {
+	color:#78ab2c;
+}
+#manage_list ul li a.last,
+#transaction_link ul li a.last {
+	border-bottom:1px solid #cecece;
+}
+.donut-chart-legend {
+	margin-top:-25px;
+}
+.donut-chart-legend ul {
+	list-style: none outside none;
+	margin: 0;
+	padding-left: 60px;
+}
+.donut-chart-legend ul li {
+	font-size: 11px;
+}
+.donut-chart-legend li .legend-tile {
+	width: 10px;
+	height: 10px;
+	background: #bababa;
+	float: left;
+	display: inline;
+	margin: 5px 5px 0 0;
+}
+
+/*
+ create tab
+*/
+option.imagebacked {
+	padding: 10px 0 0px 20px;
+	background-repeat: no-repeat;
+	background-position: 0px 0px;
+	vertical-align: middle;
+}
+
+#component_table {
+	margin: 7px 0 0 5px;
+}
+#component_table.htmlobject_table {
+	width: auto;
+}
+#component_table td {
+	border: none 0px;
+	padding: 3px;
+}
+#component_table .htmlobject_box {
+	margin: 0;
+}
+#component_table .htmlobject_box .left {
+	float: left;
+	margin: 0;
+	padding: 0;
+	width: 180px;
+}
+#component_table .price {
+	width: 20px;
+	text-align: right;
+}
+#component_table #cloud_ip_select_0_box .left,
+#component_table #cloud_ip_select_1_box .left,
+#component_table #cloud_ip_select_2_box .left,
+#component_table #cloud_ip_select_3_box .left {
+	width: 140px;
+	padding: 0 0 5px 0;
+}
+
+#hardware_slot,
+#network_slot,
+#applications_slot,
+#misc_slot,
+#price_list,
+#capabilities_slot {
+	width:450px;
+	border:1px solid #ddd;
+	border-radius: 6px;
+	margin-bottom: 8px;
+	padding: 25px 5px 15px 5px;
+	background:#ffffff;
+	min-height: 20px;
+	box-shadow: 3px 3px 6px rgba(0, 0, 0, 0.3);
+}
+#hardware_slot {
+	position:relative;
+}
+
+#network_slot {
+	position:relative;
+	background:#ddd;
+	width:350px;
+	border:1px solid #ddd;
+	margin: -5px 0 5px 10px;
+	padding: 6px 5px 5px 0;
+	box-shadow: 0 0 0;
+}
+#network_slot #cloud_network_select_box {
+	margin: 0 0 0 0;
+}
+#network_slot #cloud_network_select_box .left {
+	margin: 0 0 0 -11px;
+}
+#ip_slot {
+	position: absolute;
+	bottom: -1px;
+	left: 260px;
+}
+#ip_slot .wrapper {
+	width: 440px;
+	background:transparent;
+	padding: 0;
+	border: 0px none;
+}
+#ip_slot .htmlobject_box {
+	float: left;
+	padding: 3px 5px 3px 15px;
+	margin: 0;
+	background:#ddd;
+	border:1px solid #ddd;
+	/*box-shadow: 5px 5px 5px #888888;*/
+}
+#ip_slot #cloud_ip_select_0_box {
+	border-radius: 6px 6px 0 0;
+	padding: 8px 5px 3px 15px;
+}
+#ip_slot .htmlobject_box.last {
+	border-radius: 0 0 6px 6px;
+	padding: 3px 5px 8px 15px;
+}
+
+#ip_slot .htmlobject_box select {
+	margin: 0;
+}
+#ip_slot .htmlobject_box .left {
+	width:auto;
+}
+#applications_slot {
+	position:relative;
+}
+#applications_slot #applications_list {
+	padding: 0 0 0 15px;
+}
+#applications_slot div .htmlobject_box .left {
+	width: auto;
+	padding: 0 8px 0 0;
+	margin: 0 0 0 45px;
+}
+#misc_slot {
+	position:relative;
+}
+#misc_slot #cloud_profile_name_box {
+	float: left;
+}
+#misc_slot #cloud_profile_name {
+	width: 100px;
+}
+#misc_slot .submit {
+	float: right;
+	margin: -7px 8px 0 0;
+}
+#components_list,
+#error_list {
+	float: left;
+	width: 520px;
+}
+#profiles_slot {
+	float: right;
+	width: 180px;
+	margin: -20px 0 0 0;
+}
+#profiles_slot #profiles_list {
+	height: 100px;
+	border: 0px none;
+	padding: 0 0 0 18px;
+	overflow: auto;
+	margin: 10px 32px 0 0;
+}
+#profiles_slot #profiles_list a{
+	text-decoration: none;
+}
+#profiles_slot #profiles_list a.selected{
+	color: green;
+}
+#price_list {
+	position: absolute;
+	left: 480px;
+	bottom: 15px;
+	margin: 0 0 0 0;
+	width: auto;
+	padding: 10px;
+}
+#price_list table {
+	border: 0px none;
+}
+#price_list td {
+	border: 0px none;
+	padding: 0px;
+}
+#price_list td.price {
+	border: 0px none;
+	padding: 0px 0px 0px 10px;
+	text-align: right;
+}
+
+/* Appliances */
+
+.htmlobject_th.state,
+.htmlobject_td.state {
+	width: 55px;
+}
+.htmlobject_td.state {
+	text-align: center;;
+}
+.htmlobject_th.state {
+	border-radius: 6px 0 0 0;
+}
+.htmlobject_th.action,
+.htmlobject_td.action {
+	width: 40px;
+	text-align: center;
+}
+.htmlobject_th.action {
+	border-radius: 0 6px 0 0;
+	border-right: 1px solid #cccccc;
+}
+.htmlobject_td.action {
+	border-right: 1px solid #cccccc;
+}
+.htmlobject_th.config,
+.htmlobject_td.config {
+	width: 350px;
+}
+.htmlobject_td.config b span{
+	color: gray;
+}
+.htmlobject_td.comment hr {
+	background-color: #CCCCCC;
+	border: 0 none;
+	color: #CCCCCC;
+	height: 1px;
+	margin: 10px 0;
+}
+.htmlobject_table .pageturn_head .sort_box input,
+.htmlobject_table .pageturn_head .sort_box select,
+.htmlobject_table .pageturn_head .sort_box textarea {
+	width: auto;
+	height: auto;
+	line-height: auto;
+	margin-bottom: 0;
+	margin-bottom:0;
+	line-height: auto;
+	padding:5px;
+	font-size: 90%;
+	border-radius: 4px;
+}
+.htmlobject_table .pageturn_head .sort_box input.submit {
+	vertical-align: middle;
+	margin: 0 0 0 8px;
+	width: 30px;
+	height: 30px;
+	text-indent: -1000px;
+	background-color: transparent;
+	background: url(/cloud-portal/img/refresh.png) no-repeat;
+	border: 0px none;
+	cursor: pointer;
+}
+
+.htmlobject_td.state .pill {
+	padding: 2px 8px;
+	color: #fff;
+	font-size: 10px;
+	line-height: 10px;
+	text-transform: uppercase;
+	text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+	background: #444;
+	-webkit-border-radius: 8px;
+	-moz-border-radius: 8px;
+	border-radius: 8px;
+}
+.htmlobject_td.state .pill.active {
+	background: #8cc63f;
+}
+.htmlobject_td.state .pill.paused {
+	background: #ff5800;
+}
+.htmlobject_td.state .pill.new {
+	background: #223e99;
+}
+.htmlobject_td.state .pill.busy {
+	background: #cccccc;
+	color: black;
+}
+
+/* Images */
+.htmlobject_th.data,
+.htmlobject_td.data {
+	width: 320px;
+}
+
+/* Transaction */
+.htmlobject_th.ct_data {
+	border-radius: 6px 0 0 0;
+}
+.htmlobject_th.ct_comment,
+.htmlobject_td.ct_comment {
+	border-right: 1px solid #cccccc;
+}
+.htmlobject_th.ct_comment {
+	border-radius: 0 6px 0 0;
+}
+
+/* account tab */
+
+#cloud_account_wrapper {
+	width: 780px;
+	margin: 0 0 0 40px;
+}
+#cloud_account_left_column {
+	float: left;
+	width: 400px;
+	margin: 0;
+	padding: 5px 10px;
+}#cloud_account_left_column #buttons{
+	text-align: right;
+}
+#cloud_account_right_column {
+	float: left;
+	margin: 0px 0 0 50px;
+	padding: 0 10px;
+}
+#cloud_account_left_column .htmlobject_box {
+	margin: 0 0 2px 0;
+}
+#cloud_account_left_column .htmlobject_box .left {
+	margin: 0 0 2px 0;
+	width: 190px;
+}
+#cloud_account_right_column #buttons {
+	margin: 10px 0 0 0;
+	text-align: right;
+}
+
+/*
+ for the cost calculator / summary
+*/
+
+
+#cost_sum_per_hour {
+	position: absolute;
+	top: 10px;
+	left: 10px;
+	width: 50px;
+	height: 15px;
+}
+
+#cost_sum_per_hour_val {
+	position: absolute;
+	top: 10px;
+	left: 65px;
+	width: 20px;
+	height: 15px;
+}
+#cost_sum_per_hour_currency {
+	position: absolute;
+	top: 10px;
+	left: 90px;
+	width: 20px;
+	height: 15px;
+}
+
+
+#cost_sum_per_day {
+	position: absolute;
+	top: 10px;
+	left: 110px;
+	width: 50px;
+	height: 15px;
+}
+
+#cost_sum_per_day_val {
+	position: absolute;
+	top: 10px;
+	left: 160px;
+	width: 20px;
+	height: 15px;
+}
+#cost_sum_per_day_currency {
+	position: absolute;
+	top: 10px;
+	left: 185px;
+	width: 20px;
+	height: 15px;
+}
+
+
+#cost_sum_per_month {
+	position: absolute;
+	top: 10px;
+	left: 210px;
+	width: 50px;
+	height: 15px;
+}
+
+#cost_sum_per_month_val {
+	position: absolute;
+	top: 10px;
+	left: 265px;
+	width: 20px;
+	height: 15px;
+}
+#cost_sum_per_month_currency {
+	position: absolute;
+	top: 10px;
+	left: 295px;
+	width: 20px;
+	height: 15px;
+}
+
+
+
+#cost_sum_ccu_total {
+	position: absolute;
+	top: 10px;
+	left: 320px;
+	width: 35px;
+	height: 15px;
+}
+#cost_sum_ccu {
+	border: 1px solid #BABABA;
+	position: absolute;
+	top: 10px;
+	left: 360px;
+	width: 30px;
+	height: 15px;
+}
+
+#cost_sum_ccu_title {
+	position: absolute;
+	top: 10px;
+	left: 395px;
+	width: 35px;
+	height: 15px;
+}
+
+/*-------- Tabs
+-------------------------------------------------- */
+#register_tab,
+#project_tab_ui {
+	font-weight:normal;
+ 	background:transparent;
+	padding: 10px 10px;
+	float: left;
+	width: 170px;
+}
+.htmlobject_tabs ul {
+	display: block;
+	padding:0px;
+}
+.htmlobject_tabs span {
+	float: none;
+}
+.htmlobject_tabs ul li {
+	background:url(/cloud-portal/img/arrow.png) right no-repeat;
+	color:#4a4a4a;
+	display: block;
+	float: none;
+	padding: 0 12px 0 0;
+}
+.htmlobject_tabs li.current {
+	background:url(/cloud-portal/img/arrow.png) right no-repeat;
+}
+.htmlobject_tabs ul li span {
+	color:#4a4a4a;
+	background:url(/cloud-portal/img/bg-navi.png) repeat-x;
+	border-left:1px solid #cecece;
+	border-bottom:1px solid #cecece;
+}
+.htmlobject_tabs ul li a {
+	padding: 10px 20px 10px 15px;
+}
+.htmlobject_tabs ul li a:hover,
+.htmlobject_tabs li.current a {
+	color:#78ab2c;
+}
+.htmlobject_tabs_box {
+	position: relative;
+	min-height: 360px;
+	float: left;
+	width: 740px;
+}
+.htmlobject_tabs #tab_project_tab_ui0 span {
+	border-top: 1px solid #cecece;
+}
+.htmlobject_tabs #tab_project_tab_ui3 {
+	margin: 30px 0 0 0;
+
+}
+.htmlobject_tabs #tab_project_tab_ui3 a {
+	background: url(/cloud-portal/img/plugin.png) no-repeat 5px 7px;
+	padding: 10px 20px 10px 50px;
+}
+.htmlobject_tabs #tab_project_tab_ui3 span {
+	border-top:1px solid #cecece;
+}
+
+/* Register Tabs */
+
+#register_tab {
+	margin: 30px 0 0 20px;
+}
+.htmlobject_tabs #tab_register_tab0 span {
+	border-top:1px solid #cecece;
+}
+
+#register_tab1.htmlobject_tabs_box,
+#register_tab2.htmlobject_tabs_box,
+#register_tab3.htmlobject_tabs_box {
+	margin: 30px 0 0 70px;
+	position: relative;
+	min-height: 360px;
+	float: left;
+	width: 440px;
+	border: 0px none;
+}
+
+#register_tab0.htmlobject_tabs_box {
+	margin: 0px 0 0 0;
+	padding: 0;
+	position: relative;
+	min-height: 420px;
+	float: left;
+	width: 770px;
+	border: 0 none;
+}
+
+
+#register_container #buttons {
+	text-align: right;
+	padding: 0 40px 0 0;
+}
+#register_container .htmlobject_box .left {
+	width: 150px;
+}
+
+/*-------- Form
+-------------------------------------------------- */
+
+#cloud_language_select select {
+	width:60px!important;
+}
+
+#cloud_select label,
+#cloud_language_select label {
+	display: block;
+	float: left;
+	width: auto;
+}
+
+#cloud_language_select .submit {
+	float: right;
+	vertical-align: middle;
+	margin: 0 0 0 8px;
+	width: 30px;
+	height: 30px;
+	text-indent: -1000px;
+	background-color: transparent;
+	background: url(/cloud-portal/img/refresh.png) no-repeat;
+	border: 0px none;
+	cursor: pointer;
+}
+#cloud_language_select .htmlobject_box .left {
+	width: auto;
+}
+
+/*-Icon classes ----- */
+a.edit,
+a.enable,
+a.console,
+a.remove,
+a.restart,
+a.resize,
+a.private,
+a.pause,
+a.unpause,
+a.start,
+a.enable,
+a.private,
+a.graphs,
+a.manage,
+a.novnc,
+a.logout {
+	padding: 2px;
+	border: 0px none;
+	width: 24px;
+	height: 24px;
+	line-height: 24px;
+	display: inline-block;
+	text-align: center;
+	text-decoration: none;
+	overflow: hidden;
+	color: transparent;
+	border-radius: 3px;
+}
+a.remove {
+	background: url('/cloud-portal/img/remove.png') no-repeat center #999;
+}
+a.restart {
+	background: url('/cloud-portal/img/restart.png') no-repeat center #999;
+}
+a.pause {
+	background: url('/cloud-portal/img/pause.png') no-repeat center #999;
+}
+a.unpause,
+a.start {
+	background: url('/cloud-portal/img/start.png') no-repeat center #999;
+}
+a.edit {
+	background: url('/cloud-portal/img/edit.png') no-repeat center #999;
+}
+a.enable {
+	background: url('/cloud-portal/img/enable.png') no-repeat center #999;
+}
+a.console {
+	background: url('/cloud-portal/img/login.png') no-repeat center top;
+}
+a.manage {
+	background: url('/cloud-portal/img/manage.png') no-repeat center top;
+}
+a.graphs {
+	background: url('/cloud-portal/img/graphs.png') no-repeat center top;
+}
+a.resize {
+	background: url('/cloud-portal/img/resize.png') no-repeat center top;
+}
+a.private {
+	background: url('/cloud-portal/img/private_img.png') no-repeat center top #999;
+}
+a.plugin {
+	background: url('/cloud-portal/img/plus.png') no-repeat 0px 2px #999;
+	padding: 2px 8px 2px 28px;
+	border: 0px none;
+	width: auto;
+	height: 24px;
+	line-height: 24px;
+	display: inline-block;
+	text-align: center;
+	text-decoration: none;
+	overflow: hidden;
+	color: white;
+	border-radius: 3px;
+	margin: 0 5px 0 0;
+}
+a.logout {
+	background: url('/cloud-portal/img/logout.png') no-repeat center #999;
+	float: right;
+	margin: 0 0 0 0;
+}
+
+/* Collectd */
+#collectd_statistics h3 {
+	margin-top: 15px;
+	margin-left: 15px;
+	margin-right: 15px;
+	margin-bottom: 20px;
+	padding: 0 0 10px 0;
+	border-bottom: 1px solid #ccc;
+}
+#collectd_statistics h3 a {
+	font-size: 18px;
+	color: black;
+}
+#collectd_statistics h3 a.toplink {
+	float: right;
+	padding:0 4px;
+	margin: 4px 15px 0 0;
+	line-height:16px;
+	font-size: 12px;
+	color: #ccc;
+	border: 1px solid #ccc;
+	text-decoration: none;
+}
+#collectd_statistics h4 {
+	text-align: left;
+	margin-left: 50px;
+	margin-top: 20px;
+	margin-bottom: 8px;
+	color: black;
+}
+#collectd_statistics #downloadlink {
+	margin-left: 15px;
+	margin-top: 15px;
+	display: block;
+	width: 80px;
+	text-align: center;
+	float: left;
+	cursor: pointer;
+	background: #999;
+	line-height: 17px;
+	font-family: arial, verdana;
+	font-size: 10px;
+	color: #fff;
+	text-decoration: none;
+	text-transform: uppercase;
+	text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+	-webkit-border-radius: 3px;
+	-moz-border-radius: 3px;
+	border-radius: 3px;
+	margin-right: 3px;
+	margin-bottom: 7px;
+	padding: 4px 8px;
+	border: 0;
+	white-space: nowrap;
+}
+#collectd_statistics .image_box {
+	border: 0px none;
+	text-align: center;
+	margin-right: 15px;
+}
+#collectd_statistics .image_box img {
+	margin: 0 0 0 0;
+}
+#collectd_statistics #links{
+	float: right;
+	display: block;
+	width: 175px;
+	height: 59px;
+	overflow: auto;
+	margin-right: 18px;
+	border-left: 1px solid #ccc;
+	border-top: 1px solid #ccc;
+	border-bottom: 1px solid #ccc;
+}
+#collectd_statistics #links .linkswrapper{
+	height: 60px;
+}
+#collectd_statistics #links a {
+	padding: 0 0 0 3px;
+	display: block;
+	font-size: 13px;
+	line-height: 19px;
+	text-decoration: none;
+	border-bottom: 1px solid #ccc;
+	color: #0000FF;
+}
+#collectd_statistics #links a.last {
+	border-bottom: 0px none;
+}
+#collectd_statistics #form {
+	float:right;
+	margin: 0 20px 0 0;
+}
+#collectd_statistics #intervalbox,
+#collectd_statistics #buttons {
+	float:left;
+	margin: 0;
+}
+#collectd_statistics #interval_box .left {
+	width: auto;
+	padding: 2px 15px 0 0;
+}
+#collectd_statistics #interval_box .right select {
+	width: 80px;
+	margin: 0 0 0 0;
+}
+#collectd_statistics #buttons .interval_submit {
+	vertical-align: middle;
+	margin: 0 0 0 8px;
+	width: 25px;
+	height: 25px;
+	text-indent: -1000px;
+	background-color: transparent;
+	background-image: url(/cloud-portal/img/refresh.png);
+	border: 0px none;
+	background-repeat: no-repeat;
+	cursor: pointer;
+}

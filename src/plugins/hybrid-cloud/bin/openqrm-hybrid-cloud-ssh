@@ -1,0 +1,37 @@
+#!/usr/bin/expect -f
+# expect script to answer the connect question at first login
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+if {[llength $argv]<2} {
+	send_user "usage: $argv0 <hostname> <sshkeyfile> <command>\n"
+	exit
+}
+set hostname [lrange $argv 0 0]
+set sshkey [lrange $argv 1 1]
+set command [lrange $argv 2 2]
+set timeout -1
+
+spawn ssh -p 22 -i $sshkey root@$hostname $command
+match_max 100000
+
+expect {
+	-re ".*yes.*no.*" {
+	send "yes\r"
+	exp_continue
+	}
+	send -- "$command\r"
+}
+

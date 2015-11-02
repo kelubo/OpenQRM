@@ -1,0 +1,57 @@
+#!/usr/bin/python
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+import sys
+from oqlibcloudloadbalancer import *
+
+def main(argv):
+	cmdline = openqrm_lc_parse_cmdline(argv)
+	if cmdline['LOADBALANCER_NAME'] == '':
+		print "Loadbalancer name empty"
+		sys.exit(1)
+	if cmdline['MEMBER'] == '':
+		print "Member name empty"
+		sys.exit(1)
+
+	found_balancer = False
+	found_member = False
+	conn = openqrm_lc_get_connection(cmdline)
+	loadbalancers = conn.list_balancers()
+	for item in loadbalancers:
+		if item.name == cmdline['LOADBALANCER_NAME']:
+			found_balancer = True
+			members = item.list_members()
+			for member in members:
+				if member.name == cmdline['MEMBER']:
+					found_member = True			
+					if conn.destroy_balancer(item):
+						print "Detached member %s from loadbalancer %s" % (cmdline['MEMBER'], item.name)
+					else:
+						print "Error detaching member %s from loadbalancer %s" % (cmdline['MEMBER'], item.name)
+
+	if not found_balancer:
+		print "Loadbalancer %s not found" % (cmdline['LOADBALANCER_NAME'])
+		sys.exit(1)
+	if not found_member:
+		print "Member %s not found on loadbalancer %s" %s (cmdline['MEMBER'], cmdline['LOADBALANCER_NAME'])
+		sys.exit(1)
+
+
+
+if __name__ == "__main__":
+	main(sys.argv[1:])
+
+
+

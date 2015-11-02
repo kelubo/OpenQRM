@@ -1,0 +1,67 @@
+#!/usr/bin/python
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+import sys
+from oqlibcloudcompute import *
+
+def main(argv):
+	cmdline = openqrm_lc_parse_cmdline(argv)
+	instance_userdata = ''
+	if cmdline['IDENTIFIER'] == '':
+		print "Instance identifier missing"
+		sys.exit(1)
+	if cmdline['AMI'] == '':
+		print "AMI identifier missing"
+		sys.exit(1)
+	if cmdline['SIZE'] == '':
+		print "SIZE identifier missing"
+		sys.exit(1)
+	if cmdline['KEYPAIR'] == '':
+		print "KEYPAIR identifier missing"
+		sys.exit(1)
+	if cmdline['GROUP'] == '':
+		print "GROUP identifier missing"
+		sys.exit(1)
+	if cmdline['GROUP'] != '':
+		instance_userdata = cmdline['USERDATA']
+		userdata_contents = open(instance_userdata).read()
+	instance_name = cmdline['IDENTIFIER']
+	instance_ami = cmdline['AMI']
+	instance_size = cmdline['SIZE']
+	instance_keypair = cmdline['KEYPAIR']
+	instance_group = cmdline['GROUP']
+	conn = openqrm_lc_get_connection(cmdline)
+
+	image = [i for i in conn.list_images() if i.name == instance_ami][0]
+	size = [s for s in conn.list_sizes() if s.name == instance_size][0]
+	group = [s for s in conn.ex_list_security_groups() if s.name == instance_group][0]
+
+	# EC2
+	# size = [s for s in conn.list_sizes() if s.id == 't1.micro'][0]
+	# location = [l for l in conn.list_locations() if l.name == zone][0]
+	#key_path = '/home/matt/ec2/dev.pem'
+	#node = conn.deploy_node(name='iuiuiuiu00', image=image, size=size, deploy=script, ssh_username='ubuntu', ssh_key=key_path, ex_keyname=key_name)
+	#node = conn.create_node(name='iuiuiuiu00', image=image, size=size, location=location, ex_keyname=key_name, ex_userdata=userdata_contents)
+
+	node = conn.create_node(name=instance_name, image=image, size=size, ex_keyname=instance_keypair, ex_security_groups=[group], ex_userdata=userdata_contents)
+	print "INSTANCE %s %s %s" % (node.name, node.uuid, node.state)
+
+
+
+if __name__ == "__main__":
+	main(sys.argv[1:])
+
+
+

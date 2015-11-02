@@ -1,0 +1,13 @@
+#!/bin/bash
+# custom configuration by URL for EC2 instances
+exec 2>> /tmp/configure-custom.log
+set -x
+mkdir -p /tmp/hybrid-cloud-custom
+if ! wget -O /tmp/hybrid-cloud-custom/configure-custom @@@CUSTOM_SCRIPT_URL@@@; then
+	echo "ERROR: Could not download @@@CUSTOM_SCRIPT_URL@@@!"
+	exit 0
+fi
+chmod +x /tmp/hybrid-cloud-custom/configure-custom
+/tmp/hybrid-cloud-custom/configure-custom
+#rm -f /tmp/hybrid-cloud-custom/configure-custom
+exit 0

@@ -1,0 +1,59 @@
+#!/bin/bash
+# configures sshterm for an EC2 instance
+
+exec 2>> /tmp/configure-sshterm.log
+set -x
+
+CURRENT_DIR=`pwd`
+OPENQRM_SERVER_BASE_DIR=@@@OPENQRM_SERVER_BASE_DIR@@@
+if [ -f /etc/debian_version ]; then
+	apt-get -y install wget screen unzip openssl python-openssl
+elif [ -f /etc/redhat-release ]; then
+	yum -y install wget screen unzip openssl pyOpenSSL
+elif [ -f /etc/SuSE-release ]; then
+	zypper --non-interactive install wget screen unzip openssl python-openssl
+fi
+if [ -x /usr/bin/screen.real ]; then
+	RUNSCREEN="/usr/bin/screen.real"
+else
+	RUNSCREEN=`which screen`
+fi
+
+mkdir -p /tmp/hybrid-cloud-sshterm
+if ! wget -O /tmp/hybrid-cloud-sshterm/WebShell.zip @@@SSHTERM_COMPONENT_DOWNLOAD@@@; then
+	echo "ERROR: Could not download @@@SSHTERM_COMPONENT_DOWNLOAD@@@!"
+	exit 0
+fi
+rm -rf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/sshterm/webshell
+mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/sshterm/webshell/
+unzip -d $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/sshterm/webshell/ /tmp/hybrid-cloud-sshterm/WebShell.zip
+rm -rf /tmp/hybrid-cloud-sshterm
+
+cd $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/sshterm/webshell/WebShell-@@@SSHTERM_COMPONENT_VERSION@@@
+
+# we use the self generated webshell cert from the openQRM Server
+# because  there is a problem generating them on the fly on EC2
+umask 077
+mkdir -p /root/.webshell/
+cp -af /tmp/hybrid-cloud-installer/install/sshterm/webshell.pem /root/.webshell/
+
+	# patch SocketServer.py for python 2.7
+	# webshell/python bug http://code.google.com/p/web-shell/issues/detail?id=67&q=2.7
+	if [ -f /usr/lib/python2.7/SocketServer.py ]; then
+		if [ ! -f /usr/lib/python2.7/SocketServer.py.openqrm-backup ]; then
+			cp -f /usr/lib/python2.7/SocketServer.py /usr/lib/python2.7/SocketServer.py.openqrm-backup
+		fi
+		# pls preserve the line breaks in the following sed command
+		if ! grep openQRM /usr/lib/python2.7/SocketServer.py 1>/dev/null; then
+			sed -i -e 's/request.shutdown(socket.SHUT_WR)/request.shutdown(socket.SHUT_WR)\
+		# openQRM: fix for webshell in combination with python 2\.7\
+        except TypeError:\
+            request.shutdown()\
+/' /usr/lib/python2.7/SocketServer.py
+		fi
+	fi
+
+SCREEN_NAME=`date +%T%x | sed -e "s/://g" | sed -e "s#/##g"`
+$RUNSCREEN -dmS $SCREEN_NAME ./webshell.py --ssl-cert=/root/.webshell/webshell.pem
+cd $CURRENT_DIR
+exit 0

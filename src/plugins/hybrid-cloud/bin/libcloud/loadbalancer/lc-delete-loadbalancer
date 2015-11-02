@@ -1,0 +1,37 @@
+#!/usr/bin/python
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+import sys
+from oqlibcloudloadbalancer import *
+
+def main(argv):
+	cmdline = openqrm_lc_parse_cmdline(argv)
+	if cmdline['LOADBALANCER_NAME'] == '':
+		sys.exit(1)
+	conn = openqrm_lc_get_connection(cmdline)
+	loadbalancers = conn.list_balancers()
+	for item in loadbalancers:
+		if item.name == cmdline['LOADBALANCER_NAME']:
+			if conn.destroy_balancer(item):
+				print "Removing loadbalancer %s" % (item.name)
+			else:
+				print "Error removing loadbalancer %s" % (item.name)
+
+
+if __name__ == "__main__":
+	main(sys.argv[1:])
+
+
+

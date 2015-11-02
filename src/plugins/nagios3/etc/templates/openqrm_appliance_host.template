@@ -1,0 +1,30 @@
+# openQRM configuration file template
+
+# custom host template per appliance
+define host {
+    name                            default-@@APPLIANCE_NAME@@-template
+    notifications_enabled           1
+    event_handler_enabled           1
+    flap_detection_enabled          1
+    process_perf_data               1
+    retain_status_information       1
+    retain_nonstatus_information    1
+    parents                         localhost
+    contact_groups admins
+    register                        0
+}
+
+
+# custom host configuration
+define host {
+        use                             default-@@APPLIANCE_NAME@@-template
+        host_name                       @@APPLIANCE_NAME@@
+        alias                           alias
+        address                         @@RESOURCE_IP@@
+        check_command                   check-host-alive
+        max_check_attempts              3
+        checks_enabled                  1
+        notification_interval           5
+}
+
+

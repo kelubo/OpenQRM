@@ -1,0 +1,1028 @@
+#!/bin/bash
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2012, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+# this script automatically manages hybrid-cloud im- and exports
+OPENQRM_SERVER_BASE_DIR=$(dirname $0)/../../../..
+OPENQRM_SERVER_BASE_DIR=$(pushd $OPENQRM_SERVER_BASE_DIR > /dev/null && echo $PWD && popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+# unblock starting command queue early for non-blocking + ui commands
+# only blocking commands
+export OPENQRM_SOURCE_DIR="$OPENQRM_SERVER_BASE_DIR/openqrm/"
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-package-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/include/openqrm-plugin-hybrid-cloud-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/openqrm-plugin-hybrid-cloud.conf
+# get the ip config
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+openqrm_server_get_config
+export LANG=C
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+# stat dir
+HYBRID_CLOUD_STAT_DIR="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/web/hybrid-cloud-stat/"
+# instance conf dir
+HYBRID_CLOUD_INSTANCE_CONF_DIR="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/instances/"
+
+if [ "$OPENQRM_CUSTOM_JAVA_HOME" != "" ]; then
+	export JAVA_HOME=$OPENQRM_CUSTOM_JAVA_HOME
+	export PATH=$JAVA_HOME/bin:$PATH
+fi
+if [ "$OPENQRM_CUSTOM_EC2_API_HOME" != "" ]; then
+	export EC2_HOME=$OPENQRM_CUSTOM_EC2_API_HOME
+	export PATH=$OPENQRM_CUSTOM_EC2_API_HOME/bin:$PATH
+fi
+if [ "$OPENQRM_CUSTOM_EC2_AMI_HOME" != "" ]; then
+	export EC2_AMITOOL_HOME=$OPENQRM_CUSTOM_EC2_AMI_HOME
+	export EC2_AMI_HOME=$OPENQRM_CUSTOM_EC2_AMI_HOME
+	export PATH=$OPENQRM_CUSTOM_EC2_AMI_HOME/bin:$PATH
+fi
+
+# define wget to use with https
+if [ "$OPENQRM_WEB_PROTOCOL" == "https" ]; then
+	WGET="wget -q --no-check-certificate"
+else
+	WGET="wget -q"
+fi
+
+# let only root run this script
+WHOAMI=`whoami`
+if [ "$WHOAMI" != "root" ]; then
+	echo "ERROR: Please run this script as root!"
+	exit 6
+fi
+
+# check deps
+if ! check_hybrid_cloud_deps; then
+	if [ "$NON_BLOCKING" != "true" ]; then
+		openqrm_unblock_starting_queue $@
+	fi
+	exit 1
+fi
+
+# create stat + conf dir
+if [ ! -d "$HYBRID_CLOUD_STAT_DIR" ]; then
+	mkdir -p $HYBRID_CLOUD_STAT_DIR
+	chmod -R 777 $HYBRID_CLOUD_STAT_DIR
+fi
+if [ ! -d "$HYBRID_CLOUD_INSTANCE_CONF_DIR" ]; then
+	mkdir -p $HYBRID_CLOUD_INSTANCE_CONF_DIR
+fi
+
+
+
+
+function hybrid_cloud_usage() {
+	echo "Usage : $0 describe <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca>"
+	echo "        $0 create <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-a ami-name> <-ii image-id> <-in instance-name> <-it instance-type> <-im instance-mac> <-ik keypair> <-ig security-group> <-ir region> <-iz availability zone> [-ic url-to-custom-configuration-script]"
+	echo "        $0 remove/start/stop/restart <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-in instance-name> <-ir region>"
+	echo "        $0 configuration <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-ir region>"
+	echo "        $0 ha_configuration <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-in instance-name>"
+	echo "        $0 fence <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-im instance-mac>"
+	echo ""
+	echo "        $0 describe <-n account-name> <-i account-id> <-u username> <-p passsword> <-q host-ip> <-x portnumber> <-e endpoint> <-g tenant-name> <-t lc-openstack>"
+	echo "        $0 create <-n account-name> <-i account-id> <-u username> <-p passsword> <-q host-ip> <-x portnumber> <-e endpoint> <-g tenant-name> <-t lc-openstack> <-a ami-name> <-ii image-id> <-in instance-name> <-it instance-type> <-im instance-mac> <-ik keypair> <-ig security-group> <-ir region> <-iz availability zone> [-ic url-to-custom-configuration-script]"
+	echo "        $0 remove/start/stop/restart <-n account-name> <-i account-id> <-u username> <-p passsword> <-q host-ip> <-x portnumber> <-e endpoint> <-g tenant-name> <-t lc-openstack> <-in instance-name> <-ir region>"
+	echo "        $0 configuration <-n account-name> <-i account-id> <-u username> <-p passsword> <-q host-ip> <-x portnumber> <-e endpoint> <-g tenant-name> <-t lc-openstack> <-ir region>"
+	echo "        $0 ha_configuration <-n account-name> <-i account-id> <-u username> <-p passsword> <-q host-ip> <-x portnumber> <-e endpoint> <-g tenant-name> <-t lc-openstack> <-in instance-name>"
+	echo "        $0 fence <-n account-name> <-i account-id> <-u username> <-p passsword> <-q host-ip> <-x portnumber> <-e endpoint> <-g tenant-name> <-t lc-openstack> <-im instance-mac>"
+	echo ""
+	echo "Optional parameters:"
+	echo "             [--openqrm-ui-user <username>]"
+	echo "             [--openqrm-internal-cmd <true/false>]"
+	echo "             [--openqrm-cmd-mode <regular/background/fork>]"
+	# set account to fail
+	if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_ID" == "" ]; then
+		CONF_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.acl_check.log
+		echo "fail" > $CONF_LOG.tmp
+		chmod -R 777 $CONF_LOG.tmp
+		mv -f $CONF_LOG.tmp $CONF_LOG
+	fi
+	exit 1
+}
+
+# debugging
+#exec 2>> /var/log/ec2-commands.log
+#set -x
+
+
+FULL_COMMANDLINE="$0 $@"
+HYBRID_CLOUD_COMMAND=$1
+shift
+
+while [ $# -ne 0 ]; do
+	case "$1" in
+		-i)
+			PARAM_HYBRID_CLOUD_ACCOUNT_ID=$2
+			shift
+			;;
+		-n)
+			PARAM_HYBRID_CLOUD_ACCOUNT_NAME=$2
+			shift
+			;;
+		-t)
+			PARAM_HYBRID_CLOUD_ACCOUNT_TYPE=$2
+			shift
+			;;
+		-O)
+			PARAM_HYBRID_CLOUD_ACCESS_KEY=$2
+			shift
+			;;
+		-W)
+			PARAM_HYBRID_CLOUD_SECRET_KEY=$2
+			shift
+			;;
+		-u)
+			PARAM_HYBRID_CLOUD_USERNAME=$2
+			shift
+			;;
+		-p)
+			PARAM_HYBRID_CLOUD_PASSWORD=$2
+			shift
+			;;
+		-q)
+			PARAM_HYBRID_CLOUD_HOST=$2
+			shift
+			;;
+		-x)
+			PARAM_HYBRID_CLOUD_PORT=$2
+			shift
+			;;
+		-e)
+			PARAM_HYBRID_CLOUD_ENDPOINT=$2
+			shift
+			;;
+		-g)
+			PARAM_HYBRID_CLOUD_TENANT=$2
+			shift
+			;;
+		-a)
+			PARAM_AMI_NAME=$2
+			shift
+			;;
+		-im)
+			PARAM_INSTANCE_MAC=$2
+			shift
+			;;
+		-in)
+			PARAM_INSTANCE_NAME=$2
+			shift
+			;;
+		-ia)
+			PARAM_INSTANCE_APPLIANCE_NAME=$2
+			shift
+			;;
+		-ii)
+			PARAM_INSTANCE_IMAGE_ID=$2
+			shift
+			;;
+		-it)
+			PARAM_INSTANCE_TYPE=$2
+			shift
+			;;
+		-ig)
+			PARAM_INSTANCE_SECURITY_GROUP=$2
+			shift
+			;;
+		-ir)
+			PARAM_INSTANCE_REGION=$2
+			shift
+			;;
+		-iz)
+			PARAM_INSTANCE_AVAILABILITY_ZONE=$2
+			shift
+			;;
+		-ik)
+			PARAM_INSTANCE_KEYPAIR=$2
+			shift
+			;;
+		-ic)
+			PARAM_CUSTOM_SCRIPT_URL=$2
+			shift
+			;;
+		-vpc)
+			PARAM_VPC=$2
+			shift
+			;;
+		-subnet)
+			PARAM_SUBNET=$2
+			shift
+			;;
+
+		--statistics)
+			PARAM_INSTANCE_STATISTICS=$2
+			shift
+			;;
+		--openqrm-ui-user)
+			OPENQRM_UI_USER=$2
+			shift
+			;;
+		--openqrm-internal-cmd)
+			OPENQRM_INTERNAL_CMD=$2
+			shift
+			;;
+		--openqrm-cmd-mode)
+			OPENQRM_CMD_MODE=$2
+			shift
+			;;
+
+		*)
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			echo "ERROR: Free commandline arguments are not allowed"
+			hybrid_cloud_usage
+			exit 6
+			;;
+	esac
+	shift
+done
+
+# checks
+if [ "$HYBRID_CLOUD_COMMAND" == "" ]; then
+	openqrm_unblock_starting_queue $FULL_COMMANDLINE
+	hybrid_cloud_usage
+fi
+if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_ID" == "" ] && [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_NAME" == "" ]; then
+	if [ "$NON_BLOCKING" != "true" ]; then
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+	fi
+	hybrid_cloud_usage
+fi
+
+# map the cloud types to the utils names
+case "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" in
+	aws)
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/commands/aws.conf
+		check_hybrid_cloud_deps_ec2
+		if  [ "$PARAM_HYBRID_CLOUD_ACCESS_KEY" == "" ] || [ "$PARAM_HYBRID_CLOUD_SECRET_KEY" == "" ]; then
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			hybrid_cloud_usage
+		fi
+		# set region
+		if [ "$PARAM_INSTANCE_REGION" != "" ]; then
+			PARAM_INSTANCE_REGION_PARAMETER=" --region $PARAM_INSTANCE_REGION"
+			export EC2_URL="ec2.$PARAM_INSTANCE_REGION.amazonaws.com"
+		fi
+		HYBRID_CLOUD_ACCOUNT="-O $PARAM_HYBRID_CLOUD_ACCESS_KEY -W $PARAM_HYBRID_CLOUD_SECRET_KEY"
+		;;
+	euca)
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/commands/euca.conf
+		check_hybrid_cloud_deps_euca
+		if  [ "$PARAM_HYBRID_CLOUD_ACCESS_KEY" == "" ] || [ "$PARAM_HYBRID_CLOUD_SECRET_KEY" == "" ]; then
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			hybrid_cloud_usage
+		fi
+		# set region
+		if [ "$PARAM_INSTANCE_REGION" != "" ]; then
+			PARAM_INSTANCE_REGION_PARAMETER=" --region $PARAM_INSTANCE_REGION"
+		fi
+		HYBRID_CLOUD_ACCOUNT="-O $PARAM_HYBRID_CLOUD_ACCESS_KEY -W $PARAM_HYBRID_CLOUD_SECRET_KEY"
+		;;
+	lc-openstack)
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/commands/lc-openstack.conf
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_NAME" == "" ] || [ "$PARAM_HYBRID_CLOUD_USERNAME" == "" ] || [ "$PARAM_HYBRID_CLOUD_PASSWORD" == "" ] || [ "$PARAM_HYBRID_CLOUD_HOST" == "" ] || [ "$PARAM_HYBRID_CLOUD_PORT" == "" ] || [ "$PARAM_HYBRID_CLOUD_ENDPOINT" == "" ] || [ "$PARAM_HYBRID_CLOUD_TENANT" == "" ]; then
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			hybrid_cloud_usage
+		fi
+		HYBRID_CLOUD_ACCOUNT="--provider OPENSTACK --username $PARAM_HYBRID_CLOUD_USERNAME --password $PARAM_HYBRID_CLOUD_PASSWORD --host $PARAM_HYBRID_CLOUD_HOST --port $PARAM_HYBRID_CLOUD_PORT --endpoint $PARAM_HYBRID_CLOUD_ENDPOINT --tenant $PARAM_HYBRID_CLOUD_TENANT"
+		;;
+esac
+
+if [ "$OPENQRM_UI_USER" != "" ]; then
+	OPENQRM_UI_USER_PARAMETER=" --openqrm-ui-user $OPENQRM_UI_USER"
+fi
+
+
+
+# main
+case "$HYBRID_CLOUD_COMMAND" in
+	describe)
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		AWSRETURN=$($DESCRIBE_INSTANCES $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER 2>&1 > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp)
+		if [ -n "$AWSRETURN" ] ; then
+			TMPERROR=$(openqrm_format_error_msg "Error listing Instances! $AWSRETURN")
+			openqrm_post_event 0 "describe" 3 "openqrm-hybrid-cloud" "$TMPERROR"
+		fi
+
+		grep ^INSTANCE $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp.1
+		grep -w -v 'terminated' $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp.1 > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp
+		# add the idle instances from the config files
+		for INSTANCE_NAME in `ls $HYBRID_CLOUD_INSTANCE_CONF_DIR/ 2>/dev/null`; do
+			if ! grep -w $INSTANCE_NAME $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp 1>/dev/null; then
+				. $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_NAME/instance.conf
+				if [ "$INSTANCE_STATE" != "idle" ]; then
+					continue
+				fi
+				##  INSTANCE $INSTANCE_NAME $INSTANCE_AMI_NAME $INSTANCE_STATE KEYPAIR 0 $INSTANCE_TYPE DATE $INSTANCE_REGION OSTYPE MONITORING PUBLIC-IP PRIVATE_IP VPC-GROUP SUBNET EBS HVM XEN - - $INSTANCE_MAC -
+				echo "INSTANCE $INSTANCE_NAME $INSTANCE_AMI_NAME - - $INSTANCE_STATE KEYPAIR 0 - $INSTANCE_TYPE DATE $INSTANCE_REGION - - - MONITORING - - VPC-GROUP SUBNET EBS HVM XEN - - - - - - - $INSTANCE_MAC" >> $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp
+			fi
+		done
+		sed -i -e "s/\x09/@/g" $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp
+		sed -i -e "s/\x20/@/g" $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp
+		chmod -R 777 $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp
+		if [ "$PARAM_INSTANCE_STATISTICS" == "true" ]; then
+			mv -f $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.instances_statistics.log
+		else
+			mv -f $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log.tmp $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_instances.log
+		fi
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	create)
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		mkdir -p $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME
+		echo "INSTANCE_NAME=\"$PARAM_INSTANCE_NAME\"" > $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_IDLE_NAME=\"$PARAM_INSTANCE_NAME\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_TYPE=\"$PARAM_INSTANCE_TYPE\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_STATE=\"idle\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_MAC=\"$PARAM_INSTANCE_MAC\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_SECURITY_GROUP=\"$PARAM_INSTANCE_SECURITY_GROUP\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_AVAILABILITY_ZONE=\"$PARAM_INSTANCE_AVAILABILITY_ZONE\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_REGION=\"$PARAM_INSTANCE_REGION\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_KEYPAIR=\"$PARAM_INSTANCE_KEYPAIR\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_AMI_NAME=\"$PARAM_AMI_NAME\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		echo "INSTANCE_CUSTOM_SCRIPT_URL=\"$PARAM_CUSTOM_SCRIPT_URL\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+
+		case "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" in
+		aws)
+			echo "INSTANCE_SUBNET=\"$PARAM_SUBNET\"" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		;;
+		esac
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+	remove)
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		rm -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		rm -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/skip_reboot
+		rm -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data-file.sh
+		rm -rf $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data
+		rm -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/iauth.*
+		rmdir $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	run)
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		# if ami is set update the instance.conf before
+		if [ "$PARAM_AMI_NAME" != "" ]; then
+			sed -i -e "s/^INSTANCE_AMI_NAME=.*/INSTANCE_AMI_NAME=\"$PARAM_AMI_NAME\"/"g $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		fi
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		CURRENT_DIR=`pwd`
+
+exec 2>> /var/log/ec2-commands.log
+set -x
+
+		if [ ! -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf ]; then
+			openqrm_post_event 0 "run" 3 "openqrm-hybrid-cloud" "Could not run Instance $PARAM_INSTANCE_NAME! Instance config missing."
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+		fi
+		. $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		# here we tell the appliance stop action to skip the reboot after de-assignment
+		touch $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/skip_reboot
+
+		# pre the self-extracting user data file
+		INSTANCE_USER_DATA=""
+		mkdir -p $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install
+		rm -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data-file.sh
+		# get the image password if set and apply it through user-data-file
+		if  $WGET -O $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/iauth.$PARAM_INSTANCE_IMAGE_ID $OPENQRM_WEB_PROTOCOL://$OPENQRM_SERVER_IP_ADDRESS/openqrm/action/image-auth/iauth.$PARAM_INSTANCE_IMAGE_ID.php 2>/tmp/iauth.log; then
+			cryptedpassword=`cat $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/iauth.$PARAM_INSTANCE_IMAGE_ID`
+			rm -f /tmp/iauth.log
+			if [ "$cryptedpassword" != "" ]; then
+				cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/templates/configure-password |	\
+					sed -e "s#@@@CRYPTEDPASSWORD@@@#$cryptedpassword#g" > $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-password
+			fi
+		fi
+		rm -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/iauth*
+		touch $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-password
+		chmod +x $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-password
+
+		# puppet enabled ?
+		if [ -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/puppet/web/.running ]; then
+			# the puppet plugin depends on dns working so it needs the dns plugin available+enabled
+			if [ ! -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/openqrm-plugin-dns.conf ]; then
+				echo "ERROR: The openQRM puppet-plugin depends on the dns-plugin. Please enable the dns-plugin first!"
+				openqrm_post_event 0 "puppet-plugin" 3 "puppet-plugin" "The openQRM puppet-plugin depends on the dns-plugin. Please enable the dns-plugin first!"
+			else
+				# get the openQRM Domain
+				. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/openqrm-plugin-dns.conf
+				mkdir $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/puppet
+				cp -aR /etc/puppet/manifests/classes/* $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/puppet/
+				cp -aR /etc/puppet/manifests/groups/* $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/puppet/
+				# puppet configured for this server ?
+				if [ -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/puppet/web/puppet/manifests/appliances/$PARAM_INSTANCE_APPLIANCE_NAME.$OPENQRM_SERVER_DOMAIN.pp ]; then
+					echo "import \"classes/*.pp\"" > $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/puppet/hybrid-cloud-server.pp
+					cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/puppet/web/puppet/manifests/appliances/$PARAM_INSTANCE_APPLIANCE_NAME.$OPENQRM_SERVER_DOMAIN.pp |
+						sed -e "s#$PARAM_INSTANCE_APPLIANCE_NAME.$OPENQRM_SERVER_DOMAIN#@@@HOSTNAME@@@#g" >> $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/puppet/hybrid-cloud-server.pp
+					cp -af $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/templates/configure-puppet $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-puppet
+				fi
+			fi
+		fi
+		touch $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-puppet
+		chmod +x $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-puppet
+
+		# sshterm
+		if [ -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/sshterm/web/.running ]; then
+			. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/sshterm/etc/build.conf/sshterm-component.conf
+			cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/templates/configure-sshterm |	\
+				sed -e "s#@@@SSHTERM_COMPONENT_DOWNLOAD@@@#$OPENQRM_SOURCE_DOWNLOAD#g"	|
+				sed -e "s#@@@SSHTERM_COMPONENT_VERSION@@@#$OPENQRM_SOURCE_VERSION#g"	|
+				sed -e "s#@@@OPENQRM_SERVER_BASE_DIR@@@#$OPENQRM_SERVER_BASE_DIR#g" > $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-sshterm
+			if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+				# enable port 8022 in the security group
+				$AUTHORIZE $HYBRID_CLOUD_ACCOUNT --region $INSTANCE_REGION $INSTANCE_SECURITY_GROUP -p 8022 &
+				hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			fi
+			# we use the self generated webshell cert from the openQRM Server because there is a problem generating them on the fly on EC2
+			mkdir $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/sshterm
+			cp -af /root/.webshell/webshell.pem $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/sshterm/
+		fi
+		touch $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-sshterm
+		chmod +x $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-sshterm
+
+		# custom
+		if [ "$INSTANCE_CUSTOM_SCRIPT_URL" != "" ]; then
+			cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/templates/configure-custom |	\
+				sed -e "s#@@@CUSTOM_SCRIPT_URL@@@#$INSTANCE_CUSTOM_SCRIPT_URL#g" > $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-custom
+		fi
+		touch $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-custom
+		chmod +x $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/install/configure-custom
+
+		# build the self-extracting archive
+		cd $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/
+		rm -f user-data-file.tar user-data-file.tar.gz
+		tar -cvf user-data-file.tar install
+		gzip user-data-file.tar
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/templates/configure-installer user-data-file.tar.gz > $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data-file.sh
+		rm -rf $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data/
+		INSTANCE_USER_DATA="$HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/user-data-file.sh"
+		cd $CURRENT_DIR
+
+		# EC2 and Eucalyptus
+		INSTANCE_CREATE_PARAMS="";
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+			INSTANCE_CREATE_PARAMS="$HYBRID_CLOUD_ACCOUNT --region $INSTANCE_REGION $INSTANCE_AMI_NAME -g $INSTANCE_SECURITY_GROUP -k $INSTANCE_KEYPAIR -n 1 -t $INSTANCE_TYPE -z $INSTANCE_AVAILABILITY_ZONE -f $INSTANCE_USER_DATA";
+			export EC2_URL="ec2.$INSTANCE_REGION.amazonaws.com"
+		fi
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ]; then
+			# use INSTANCE_SECURITY_SUBNET instead INSTANCE_SECURITY_GROUP
+			INSTANCE_CREATE_PARAMS="$HYBRID_CLOUD_ACCOUNT --region $INSTANCE_REGION $INSTANCE_AMI_NAME -k $INSTANCE_KEYPAIR -n 1 -t $INSTANCE_TYPE -z $INSTANCE_AVAILABILITY_ZONE -f $INSTANCE_USER_DATA";
+			INSTANCE_CREATE_PARAMS=$INSTANCE_CREATE_PARAMS" --subnet $INSTANCE_SUBNET";
+			export EC2_URL="ec2.$INSTANCE_REGION.amazonaws.com"
+		fi
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "lc-openstack" ]; then
+			INSTANCE_CREATE_PARAMS="$HYBRID_CLOUD_ACCOUNT --identifier $PARAM_INSTANCE_NAME --ami $INSTANCE_AMI_NAME --group $INSTANCE_SECURITY_GROUP --keypair $INSTANCE_KEYPAIR --size $INSTANCE_TYPE --userdata $INSTANCE_USER_DATA";
+		fi
+
+		# run instance
+		AWSRETURN=$($RUN_INSTANCE $INSTANCE_CREATE_PARAMS 2>&1)
+		if [[ $AWSRETURN == *INSTANCE* ]]; then
+			INSTANCE_ID=$(echo $AWSRETURN | awk '{ print $5 }')
+		else
+			TMPERROR=$(openqrm_format_error_msg "Error starting Instance $PARAM_INSTANCE_NAME! $AWSRETURN")
+			openqrm_post_event 0 "run" 3 "openqrm-hybrid-cloud" "$TMPERROR"
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+			exit 1
+		fi
+
+		echo "$INSTANCE_ID" > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.run_instances.hostname.tmp
+		chmod 777 $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.run_instances.hostname.tmp
+		mv $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.run_instances.hostname.tmp $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.run_instances.hostname
+		mv -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/ $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_ID/
+		sed -i -e "s/^INSTANCE_NAME=.*/INSTANCE_NAME=\"$INSTANCE_ID\"/"g $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_ID/instance.conf
+		sed -i -e "s/^INSTANCE_STATE=.*/INSTANCE_STATE=\"active\"/"g $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_ID/instance.conf
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+
+	terminate)
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		if [ ! -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf ]; then
+			openqrm_post_event 0 "terminate" 3 "openqrm-hybrid-cloud" "Error terminating Instance $PARAM_INSTANCE_NAME! Instance config missing."
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+		fi
+		. $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+
+		# EC2 and Eucalyptus
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+			# this is running via the virtual-resouce-command hook so the region parameter may be empty
+			if [ "$PARAM_INSTANCE_REGION_PARAMETER" == "" ]; then
+				PARAM_INSTANCE_REGION_PARAMETER="--region $INSTANCE_REGION"
+			fi
+			# here we tell the appliance stop action to skip the reboot after de-assignment
+			touch $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/skip_reboot
+			# terminate
+			$TERMINATE_INSTANCE $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "terminate" 3 "openqrm-hybrid-cloud" "Error terminating Instance $PARAM_INSTANCE_NAME!"
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+			fi
+		fi
+
+		# OpenStack / libcloud (start/stop not supported, running restart)
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "lc-openstack" ]; then
+			# here we tell the appliance stop action to skip the reboot after de-assignment
+			touch $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/skip_reboot
+			$TERMINATE_INSTANCE $HYBRID_CLOUD_ACCOUNT --identifier $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "terminate" 3 "openqrm-hybrid-cloud" "Error terminating Instance $PARAM_INSTANCE_NAME!"
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+
+				exit 1
+			fi
+		fi
+
+		if [ -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf ]; then
+			mv -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/ $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_IDLE_NAME/
+			sed -i -e "s/^INSTANCE_NAME=.*/INSTANCE_NAME=\"$INSTANCE_IDLE_NAME\"/"g $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_IDLE_NAME/instance.conf
+			sed -i -e "s/^INSTANCE_STATE=.*/INSTANCE_STATE=\"idle\"/"g $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_IDLE_NAME/instance.conf
+		fi
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	stop)
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		if [ ! -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf ]; then
+			openqrm_post_event 0 "stop" 3 "openqrm-hybrid-cloud" "Error stopping Instance $PARAM_INSTANCE_NAME! Instance config missing."
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+		fi
+		. $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+
+		# EC2 and Eucalyptus
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+			# this is running via the virtual-resouce-command hook so the region parameter may be empty
+			if [ "$PARAM_INSTANCE_REGION_PARAMETER" == "" ]; then
+				PARAM_INSTANCE_REGION_PARAMETER="--region $INSTANCE_REGION"
+			fi
+			$STOP_INSTANCE $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "stop" 3 "openqrm-hybrid-cloud" "Error stopping Instance $PARAM_INSTANCE_NAME! Force stop."
+				$STOP_INSTANCE $PARAM_INSTANCE_NAME -f
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+
+				exit 1
+			fi
+		fi
+
+		# OpenStack / libcloud (start/stop not supported, running restart)
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "lc-openstack" ]; then
+			$RESTART_INSTANCE $HYBRID_CLOUD_ACCOUNT --identifier $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "stop" 3 "openqrm-hybrid-cloud" "Error stopping Instance $PARAM_INSTANCE_NAME!"
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+
+				exit 1
+			fi
+		fi
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+	start)
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		if [ ! -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf ]; then
+			openqrm_post_event 0 "start" 3 "openqrm-hybrid-cloud" "Error starting Instance $PARAM_INSTANCE_NAME! Instance config missing."
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+		fi
+		. $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+
+		# EC2 and Eucalyptus
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+			# this is running via the virtual-resouce-command hook so the region parameter may be empty
+			if [ "$PARAM_INSTANCE_REGION_PARAMETER" == "" ]; then
+				PARAM_INSTANCE_REGION_PARAMETER="--region $INSTANCE_REGION"
+			fi
+			$START_INSTANCE $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "start" 3 "openqrm-hybrid-cloud" "Error starting Instance $PARAM_INSTANCE_NAME!"
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+
+				exit 1
+			fi
+		fi
+
+		# OpenStack / libcloud (start/stop not supported, running restart)
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "lc-openstack" ]; then
+			$RESTART_INSTANCE $HYBRID_CLOUD_ACCOUNT --identifier $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "start" 3 "openqrm-hybrid-cloud" "Error starting Instance $PARAM_INSTANCE_NAME!"
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+
+				exit 1
+			fi
+		fi
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	restart)
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		# if this is being executed on behalf of appliance start/stop then we check if we should skip the reboot
+		if [ -f "$HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/skip_reboot" ]; then
+			rm -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/skip_reboot
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+
+			exit 0
+		fi
+
+		if [ ! -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf ]; then
+			openqrm_post_event 0 "restarting" 3 "openqrm-hybrid-cloud" "Error restarting Instance $PARAM_INSTANCE_NAME! Instance config missing."
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+		fi
+		. $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+
+		# EC2 and Eucalyptus
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+			# this is running via the virtual-resouce-command hook so the region parameter may be empty
+			if [ "$PARAM_INSTANCE_REGION_PARAMETER" == "" ]; then
+				PARAM_INSTANCE_REGION_PARAMETER="--region $INSTANCE_REGION"
+			fi
+
+			$STOP_INSTANCE $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				# no event msg, reboot -> start
+				# openqrm_post_event 0 "restart" 3 "openqrm-hybrid-cloud" "Error stopping Instance $PARAM_INSTANCE_NAME! Force stop."
+				$STOP_INSTANCE $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER $PARAM_INSTANCE_NAME -f &
+				hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			fi
+			sleep 4
+			$START_INSTANCE $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "restart" 3 "openqrm-hybrid-cloud" "Error restarting Instance $PARAM_INSTANCE_NAME!"
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+
+				exit 1
+			fi
+
+		fi
+
+		# OpenStack / libcloud
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "lc-openstack" ]; then
+			$RESTART_INSTANCE $HYBRID_CLOUD_ACCOUNT --identifier $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "restart" 3 "openqrm-hybrid-cloud" "Error restarting Instance $PARAM_INSTANCE_NAME!"
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+
+				exit 1
+			fi
+		fi
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	fence)
+		if [ "$PARAM_INSTANCE_MAC" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		PARAM_INSTANCE_NAME=`get_instance_name_by_mac $PARAM_INSTANCE_MAC`
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			openqrm_post_event 0 "fence" 3 "openqrm-hybrid-cloud" "Could not find Instance with MAC address $PARAM_INSTANCE_MAC."
+			exit 1
+		fi
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		if [ ! -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf ]; then
+			openqrm_post_event 0 "fence" 3 "openqrm-hybrid-cloud" "Error fencing Instance $PARAM_INSTANCE_NAME! Instance config missing."
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+		fi
+		. $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+
+		# EC2 and Eucalyptus
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+			# this is running via the virtual-resouce-command hook so the region parameter may be empty
+			if [ "$PARAM_INSTANCE_REGION_PARAMETER" == "" ]; then
+				PARAM_INSTANCE_REGION_PARAMETER="--region $INSTANCE_REGION"
+			fi
+			$TERMINATE_INSTANCE $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+		fi
+		# OpenStack / libcloud
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "lc-openstack" ]; then
+			$TERMINATE_INSTANCE $HYBRID_CLOUD_ACCOUNT --identifier $PARAM_INSTANCE_NAME &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+		fi
+		mv -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/ $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_IDLE_NAME/
+		sed -i -e "s/^INSTANCE_NAME=.*/INSTANCE_NAME=\"$INSTANCE_IDLE_NAME\"/"g $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_IDLE_NAME/instance.conf
+		sed -i -e "s/^INSTANCE_STATE=.*/INSTANCE_STATE=\"idle\"/"g $HYBRID_CLOUD_INSTANCE_CONF_DIR/$INSTANCE_IDLE_NAME/instance.conf
+		if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+			openqrm_post_event 0 "fence" 3 "openqrm-hybrid-cloud" "Error fencing Instance $PARAM_INSTANCE_NAME!"
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+
+			exit 1
+		fi
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+
+	configuration)
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		CONF_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_configuration.log.tmp
+		COMPONENTS_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_components.log.tmp
+		> $CONF_LOG
+
+		# EC2 and Eucalyptus - get availabilty zones
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+			# availability zones
+			$DESCRIBE_AVAILABILITY_ZONES $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER > $COMPONENTS_LOG &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			while read line; do
+				EC2_AVAILABILITY_ZONE=`echo $line | awk '{ print $2 }'`
+				EC2_AVAILABILITY_ZONE_STATUS=`echo $line | awk '{ print $3 }'`
+				EC2_REGION=`echo $line | awk '{ print $4 }'`
+				if [ "$EC2_AVAILABILITY_ZONE_STATUS" == "available" ]; then
+					echo "ZONES@${EC2_AVAILABILITY_ZONE}@${EC2_REGION}" >> $CONF_LOG
+				fi
+			done < $COMPONENTS_LOG
+		fi
+
+		# EC2 network (VPC)
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ]; then
+			# VPCs
+			$DESCRIBE_VPC $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER > $COMPONENTS_LOG &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			while read line; do
+				EC2_VPC=`echo $line | awk '{ print $2 }'`
+				EC2_VPC_STATUS=`echo $line | awk '{ print $3 }'`
+				EC2_VPC_IP=`echo $line | awk '{ print $4 }'`
+				if [ "$EC2_VPC_STATUS" == "available" ]; then
+					echo "VPC@${EC2_VPC}@${EC2_VPC_IP}" >> $CONF_LOG
+				fi
+			done < $COMPONENTS_LOG
+
+			$DESCRIBE_SUBNET $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER > $COMPONENTS_LOG &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			while read line; do
+				EC2_SUBNET=`echo $line | awk '{ print $2 }'`
+				EC2_SUBNET_STATUS=`echo $line | awk '{ print $3 }'`
+				EC2_SUBNET_IP=`echo $line | awk '{ print $5 }'`
+				EC2_SUBNET_ZONE=`echo $line | awk '{ print $7 }'`
+				if [ "$EC2_SUBNET_STATUS" == "available" ]; then
+					echo "SUBNET@${EC2_SUBNET}@${EC2_SUBNET_IP}@${EC2_SUBNET_ZONE}" >> $CONF_LOG
+				fi
+			done < $COMPONENTS_LOG
+		fi
+
+		# OpenStack / libcloud - get sizes directly from OpenStack
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "lc-openstack" ]; then
+			# keypairs
+			$DESCRIBE_SIZES $HYBRID_CLOUD_ACCOUNT > $COMPONENTS_LOG &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			while read line; do
+				SIZE_ID=`echo $line | awk '{ print $2 }'`
+				SIZE_NAME=`echo $line | awk '{ print $3 }'`
+				echo "SIZES@${SIZE_NAME}@${SIZE_ID}" >> $CONF_LOG
+			done < $COMPONENTS_LOG
+		fi
+
+		# keypairs
+		$DESCRIBE_KEYPAIRS $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER > $COMPONENTS_LOG &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		while read line; do
+			EC2_KEYPAIRNAME=`echo $line | awk '{ print $2 }'`
+			EC2_KEYPAIR=`echo $line | awk '{ print $3 }'`
+			echo "KEYPAIR@${EC2_KEYPAIRNAME}@${EC2_KEYPAIR}" >> $CONF_LOG
+		done < $COMPONENTS_LOG
+		# security groups
+		$DESCRIBE_GROUPS $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER > $COMPONENTS_LOG &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		while read line; do
+			if `echo $line | grep ^GROUP 1>/dev/null`; then
+				EC2_GROUP=`echo $line | awk '{ print $2 }'`
+				EC2_GROUP_NAME=`echo $line | awk '{ print $4 }'`
+				echo "GROUP@${EC2_GROUP_NAME}@${EC2_GROUP}" >> $CONF_LOG
+			fi
+		done < $COMPONENTS_LOG
+		chmod -R 777 $CONF_LOG
+		mv -f $CONF_LOG $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_configuration.log
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	ha_configuration)
+		if [ "$PARAM_INSTANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		CONF_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.$PARAM_INSTANCE_NAME.ha_configuration.log.tmp
+		COMPONENTS_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.$PARAM_INSTANCE_NAME.ha_components.log.tmp
+
+		if [ ! -f $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf ]; then
+			openqrm_post_event 0 "ha_configuration" 3 "openqrm-hybrid-cloud" "Error getting HA configuration for Instance $PARAM_INSTANCE_NAME!"
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+		fi
+
+		. $HYBRID_CLOUD_INSTANCE_CONF_DIR/$PARAM_INSTANCE_NAME/instance.conf
+		> $CONF_LOG
+
+		# EC2 and Eucalyptus - get availabilty zones
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "aws" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "euca" ]; then
+			# set region
+			PARAM_INSTANCE_REGION_PARAMETER=" --region $INSTANCE_REGION"
+			# availability zones
+			$DESCRIBE_AVAILABILITY_ZONES $HYBRID_CLOUD_ACCOUNT $PARAM_INSTANCE_REGION_PARAMETER > $COMPONENTS_LOG &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			while read line; do
+				EC2_AVAILABILITY_ZONE=`echo $line | awk '{ print $2 }'`
+				EC2_AVAILABILITY_ZONE_STATUS=`echo $line | awk '{ print $3 }'`
+				EC2_REGION=`echo $line | awk '{ print $4 }'`
+				if [ "$EC2_AVAILABILITY_ZONE_STATUS" == "available" ]; then
+					if [ "$OPENQRM_PLUGIN_HYBRID_CLOUD_MIGRATE_TO_OTHER_AVAILABILITY_ZONE_IN_SAME_REGION" == "true" ]; then
+						if [ "$EC2_AVAILABILITY_ZONE" != "$INSTANCE_AVAILABILITY_ZONE" ]; then
+							echo "OPENQRM_HA_AVAILABILITY_ZONE=\"${EC2_AVAILABILITY_ZONE}\"" >> $CONF_LOG
+							break
+						fi
+					else
+						echo "OPENQRM_HA_AVAILABILITY_ZONE=\"${EC2_AVAILABILITY_ZONE}\"" >> $CONF_LOG
+						break
+					fi
+
+				fi
+			done < $COMPONENTS_LOG
+		fi
+		# keypair
+		echo "OPENQRM_HA_KEYPAIR=\"${INSTANCE_KEYPAIR}\"" >> $CONF_LOG
+		echo "OPENQRM_HA_SECURITY_GROUP=\"${INSTANCE_SECURITY_GROUP}\"" >> $CONF_LOG
+		echo "OPENQRM_HA_TYPE=\"${INSTANCE_TYPE}\"" >> $CONF_LOG
+		echo "OPENQRM_HA_REGION=\"${INSTANCE_REGION}\"" >> $CONF_LOG
+		echo "OPENQRM_HA_AMI=\"${INSTANCE_AMI_NAME}\"" >> $CONF_LOG
+		echo "OPENQRM_HA_CUSTOM_SCRIPT_URL=\"${INSTANCE_CUSTOM_SCRIPT_URL}\"" >> $CONF_LOG
+		chmod -R 777 $CONF_LOG
+		mv -f $CONF_LOG $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.$PARAM_INSTANCE_NAME.ha_configuration.log
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	*)
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+		hybrid_cloud_usage
+		;;
+
+
+esac
+

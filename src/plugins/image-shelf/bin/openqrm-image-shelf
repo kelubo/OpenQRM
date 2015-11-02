@@ -1,0 +1,411 @@
+#!/bin/bash
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+# this script automatically manages image-shelf
+OPENQRM_SERVER_BASE_DIR=$(dirname $0)/../../../..
+OPENQRM_SERVER_BASE_DIR=$(pushd $OPENQRM_SERVER_BASE_DIR > /dev/null && echo $PWD && popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+# unblock starting command queue early for non-blocking + ui commands
+IMAGE_SHELF_COMMAND=$1
+if [ "$IMAGE_SHELF_COMMAND" == "get" ]; then
+	openqrm_unblock_starting_queue $@
+	NON_BLOCKING=true
+fi
+
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/include/openqrm-plugin-image-shelf-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+openqrm_server_get_config
+export LANG=C
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+
+# let only root run this script
+WHOAMI=`whoami`
+if [ "$WHOAMI" != "root" ]; then
+	echo "ERROR: Please run this script as root!"
+	exit 6
+fi
+
+
+
+function image_shelf_usage() {
+	echo "Usage : $0 list <-n image-shelf-name> <-i image-shelf-uri> [-u username] [-p password]"
+	echo "Usage : $0 get <-n image-shelf-name> <-i image-shelf-uri> [-u username] [-p password] <-f filename> <-s storage-server-ip:/path-to-image-dir/> <-d distribution> <-o openqrm-username> <-q openqrm-password>"
+	echo ""
+	echo "Optional parameters:"
+	echo "             [--openqrm-ui-user <username>]"
+	echo "             [--openqrm-internal-cmd <true/false>]"
+	echo "             [--openqrm-cmd-mode <regular/background/fork>]"
+	exit 1
+}
+
+
+FULL_COMMANDLINE="$0 $@"
+IMAGE_SHELF_COMMAND=$1
+shift
+
+while [ $# -ne 0 ]; do
+	case "$1" in
+		-i)
+			IMAGE_SHELF_URI=$2
+			shift
+			;;
+		-n)
+			IMAGE_SHELF_NAME=$2
+			shift
+			;;
+
+		-f)
+			IMAGE_SHELF_FILE=$2
+			shift
+			;;
+		-d)
+			IMAGE_SHELF_DISTRIBUTION=$2
+			shift
+			;;
+		-s)
+			NFS_STORAGE_SERVER_EXPORT=$2
+			shift
+			;;
+		-u)
+			USERNAME=$2
+			shift
+			;;
+		-p)
+			PASSWORD=$2
+			shift
+			;;
+		-o)
+			OPENQRM_USERNAME=$2
+			shift
+			;;
+		-q)
+			OPENQRM_PASSWORD=$2
+			shift
+			;;
+		--openqrm-ui-user)
+			OPENQRM_UI_USER=$2
+			shift
+			;;
+		--openqrm-internal-cmd)
+			OPENQRM_INTERNAL_CMD=$2
+			shift
+			;;
+		--openqrm-cmd-mode)
+			OPENQRM_CMD_MODE=$2
+			shift
+			;;
+		*)
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			echo "ERROR: Free commandline arguments are not allowed"
+			image_shelf_usage
+			exit 6
+			;;
+	esac
+	shift
+done
+
+# checks
+if [ "$IMAGE_SHELF_COMMAND" == "" ]; then
+	openqrm_unblock_starting_queue $FULL_COMMANDLINE
+	image_shelf_usage
+fi
+if [ "$IMAGE_SHELF_NAME" == "" ] || [ "$IMAGE_SHELF_URI" == "" ]; then
+	if [ "$NON_BLOCKING" != "true" ]; then
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+	fi
+	image_shelf_usage
+fi
+if [ "$OPENQRM_UI_USER" != "" ]; then
+	OPENQRM_UI_USER_PARAMETER=" --openqrm-ui-user $OPENQRM_UI_USER"
+fi
+
+# main
+case "$IMAGE_SHELF_COMMAND" in 
+
+	list)
+		LOCK_TIME=`openqrm_lock_queue aquire image-shelf`
+		trap "openqrm_lock_queue release image-shelf $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+
+		IMAGE_SHELF_PROTOCOL=`echo $IMAGE_SHELF_URI | cut -d':' -f1`
+
+		case "$IMAGE_SHELF_PROTOCOL" in
+			local)
+				mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				SHELF_DIR=`echo $IMAGE_SHELF_URI | sed -e "s#local://##g"`
+				if ! cp -f $SHELF_DIR/image-shelf.conf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf; then
+					image_shelf_log "image-shelf: Could not copy image-shelf.conf from $SHELF_DIR/image-shelf.conf !"
+
+					openqrm_lock_queue release image-shelf $LOCK_TIME
+					trap '' EXIT
+
+					exit 1
+				fi
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf
+				;;
+			http)
+				mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				if [ "$USERNAME" != "" ] && [ "$PASSWORD" != "" ]; then
+					SHELF_AUTHENTICATION="--user=$USERNAME --password=$PASSWORD"
+				fi
+				if ! wget -q $SHELF_AUTHENTICATION -O $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf "$IMAGE_SHELF_URI/image-shelf.conf"; then
+					image_shelf_log "image-shelf: Could not download image-shelf.conf from $IMAGE_SHELF_URI/image-shelf.conf !"
+
+					openqrm_lock_queue release image-shelf $LOCK_TIME
+					trap '' EXIT
+
+					exit 1
+				fi
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf
+				;;
+			https)
+				mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				if [ "$USERNAME" != "" ] && [ "$PASSWORD" != "" ]; then
+					SHELF_AUTHENTICATION="--user=$USERNAME --password=$PASSWORD"
+				fi
+				if ! wget -q $SHELF_AUTHENTICATION -O $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf "$IMAGE_SHELF_URI/image-shelf.conf"; then
+					image_shelf_log "image-shelf: Could not download image-shelf.conf from $IMAGE_SHELF_URI/image-shelf.conf !"
+
+					openqrm_lock_queue release image-shelf $LOCK_TIME
+					trap '' EXIT
+
+					exit 1
+				fi
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf
+				;;
+			ftp)
+				mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				if [ "$USERNAME" != "" ] && [ "$PASSWORD" != "" ]; then
+					SHELF_AUTHENTICATION="--user=$USERNAME --password=$PASSWORD"
+				fi
+				if ! wget -q $SHELF_AUTHENTICATION -O $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf "$IMAGE_SHELF_URI/image-shelf.conf"; then
+					image_shelf_log "image-shelf: Could not download image-shelf.conf from $IMAGE_SHELF_URI/image-shelf.conf !"
+
+					openqrm_lock_queue release image-shelf $LOCK_TIME
+					trap '' EXIT
+
+					exit 1
+				fi
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf
+				;;
+			nfs)
+				mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME
+				SHELF_NFS_MOUNT=`echo $IMAGE_SHELF_URI | sed -e "s#nfs://##g"`
+				mkdir -p /tmp/image-shelf-tmp/$IMAGE_SHELF_NAME
+				if ! mount -t nfs $SHELF_NFS_MOUNT /tmp/image-shelf-tmp/$IMAGE_SHELF_NAME; then
+					image_shelf_log "image-shelf: Could not mount the image-shelf from $IMAGE_SHELF_URI !"
+					exit 1
+				fi
+				if ! cp -f /tmp/image-shelf-tmp/$IMAGE_SHELF_NAME/image-shelf.conf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf; then
+					image_shelf_log "image-shelf: Could not copy the image-shelf.conf from image-shelf $IMAGE_SHELF_NAME !"
+					umount /tmp/image-shelf-tmp/$IMAGE_SHELF_NAME/
+
+					openqrm_lock_queue release image-shelf $LOCK_TIME
+					trap '' EXIT
+
+					exit 1
+				fi
+				umount /tmp/image-shelf-tmp/$IMAGE_SHELF_NAME/
+				rm -rf /tmp/image-shelf-tmp/$IMAGE_SHELF_NAME
+				chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/image-lists/$IMAGE_SHELF_NAME/image-shelf.conf
+				;;
+			*)
+				image_shelf_usage
+				exit 1
+
+		esac
+
+		openqrm_lock_queue release image-shelf $LOCK_TIME
+		trap '' EXIT
+		;;
+
+	get)
+		if [ "$IMAGE_SHELF_FILE" == "" ] || [ "$NFS_STORAGE_SERVER_EXPORT" == "" ]; then
+			image_shelf_usage
+		fi
+
+		openqrm_post_event 0 "$IMAGE_SHELF_FILE" 9 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+		# prepare a temporary mount point
+		MOUNTPOINT=`mktemp -d /tmp/$IMAGE_SHELF_NAME.XXXXXXXXXX` || exit 1
+		if ! mount -t nfs $NFS_STORAGE_SERVER_EXPORT $MOUNTPOINT; then
+			image_shelf_log "ERROR: Could not mount $NFS_STORAGE_SERVER_EXPORT!"
+			openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+			openqrm_post_event 0 "get" 3 "openqrm-image-shelf" "Could not mount $NFS_STORAGE_SERVER_EXPORT!"
+			exit 1
+		else
+			image_shelf_log "NOTICE: Mounted $NFS_STORAGE_SERVER_EXPORT. Starting the download."
+			openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Mounted $NFS_STORAGE_SERVER_EXPORT. Starting the download."
+		fi
+
+		IMAGE_SHELF_PROTOCOL=`echo $IMAGE_SHELF_URI | cut -d':' -f1`
+		case "$IMAGE_SHELF_PROTOCOL" in
+			local)
+				SHELF_DIR=`echo $IMAGE_SHELF_URI | sed -e "s#local://##g"`
+				if ! cp -f $SHELF_DIR/$IMAGE_SHELF_FILE $MOUNTPOINT/$IMAGE_SHELF_FILE; then
+					image_shelf_log "ERROR: Could not copy Image-template from $SHELF_DIR/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 3 "openqrm-image-shelf" "Could not copy Image-template from $SHELF_DIR/$IMAGE_SHELF_FILE."
+					umount $MOUNTPOINT
+					rmdir $MOUNTPOINT
+					exit 1
+				else
+					image_shelf_log "NOTICE: Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+				fi
+				;;
+			http)
+				# wget the image from the shelf
+				if [ "$USERNAME" != "" ] && [ "$PASSWORD" != "" ]; then
+					SHELF_AUTHENTICATION="--user=$USERNAME --password=$PASSWORD"
+				fi
+				if ! wget $SHELF_AUTHENTICATION -O $MOUNTPOINT/$IMAGE_SHELF_FILE $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE; then
+					image_shelf_log "ERROR: Could not download Image-template from $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 3 "openqrm-image-shelf" "Could not download Image-template from $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE."
+					umount $MOUNTPOINT
+					rmdir $MOUNTPOINT
+					exit 1
+				else
+					image_shelf_log "NOTICE: Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+				fi
+				;;
+			https)
+				# wget the image from the shelf
+				if [ "$USERNAME" != "" ] && [ "$PASSWORD" != "" ]; then
+					SHELF_AUTHENTICATION="--user=$USERNAME --password=$PASSWORD"
+				fi
+				if ! wget $SHELF_AUTHENTICATION -O $MOUNTPOINT/$IMAGE_SHELF_FILE $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE; then
+					image_shelf_log "ERROR: Could not download Image-template from $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 3 "openqrm-image-shelf" "Could not download Image-template from $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE."
+					umount $MOUNTPOINT
+					rmdir $MOUNTPOINT
+					exit 1
+				else
+					image_shelf_log "NOTICE: Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+				fi
+				;;
+			ftp)
+				if [ "$USERNAME" != "" ] && [ "$PASSWORD" != "" ]; then
+					SHELF_AUTHENTICATION="--user=$USERNAME --password=$PASSWORD"
+				fi
+				if ! wget $SHELF_AUTHENTICATION -O $MOUNTPOINT/$IMAGE_SHELF_FILE $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE; then
+					image_shelf_log "ERROR: Could not download Image-template from $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 3 "openqrm-image-shelf" "Could not download Image-template from $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE."
+					umount $MOUNTPOINT
+					rmdir $MOUNTPOINT
+					exit 1
+				else
+					image_shelf_log "NOTICE: Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+				fi
+				;;
+			nfs)
+				mkdir -p /tmp/image-shelf-download/
+				SHELF_NFS_MOUNT=`echo $IMAGE_SHELF_URI | sed -e "s#nfs://##g"`
+				IMAGE_SHELF_NFS_MOUNTPOINT=`mktemp -d /tmp/image-shelf-download/$IMAGE_SHELF_NAME.XXXXXXXXXX` || exit 1
+				mkdir -p $IMAGE_SHELF_NFS_MOUNTPOINT
+				if ! mount -t nfs $SHELF_NFS_MOUNT $IMAGE_SHELF_NFS_MOUNTPOINT; then
+					openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+					image_shelf_log "image-shelf: Could not mount the image-shelf from $IMAGE_SHELF_URI !"
+					exit 1
+				fi
+				if ! cp -f $IMAGE_SHELF_NFS_MOUNTPOINT/$IMAGE_SHELF_FILE $MOUNTPOINT/$IMAGE_SHELF_FILE; then
+					image_shelf_log "ERROR: Could not copy Image-template from $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 3 "openqrm-image-shelf" "Could not copy Image-template from $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE."
+					umount $MOUNTPOINT
+					rmdir $MOUNTPOINT
+					umount $IMAGE_SHELF_NFS_MOUNTPOINT
+					rmdir $IMAGE_SHELF_NFS_MOUNTPOINT
+					exit 1
+				else
+					image_shelf_log "NOTICE: Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+					openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Downloaded $IMAGE_SHELF_URI/$IMAGE_SHELF_FILE to $MOUNTPOINT/$IMAGE_SHELF_FILE."
+					umount $IMAGE_SHELF_NFS_MOUNTPOINT
+					rmdir $IMAGE_SHELF_NFS_MOUNTPOINT
+				fi
+				;;
+
+			*)
+				image_shelf_usage
+				exit 1
+		esac
+
+		# unpack
+		if ! tar -C $MOUNTPOINT/ -xzf $MOUNTPOINT/$IMAGE_SHELF_FILE; then
+			image_shelf_log "WARNING: Errors while unpacking Image-template from $IMAGE_SHELF_FILE! Trying to continue ..."
+		else
+			image_shelf_log "NOTICE: Unpacked $IMAGE_SHELF_FILE"
+		fi
+		openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Unpacked $IMAGE_SHELF_FILE"
+		# preperation
+		# set /etc/resolv.conf
+		image_shelf_set_resolv_conf $MOUNTPOINT/
+
+		# clean up
+		rm -f $MOUNTPOINT/$IMAGE_SHELF_FILE
+
+		# create kernel
+		# check for initrd-template
+		if [ -f $MOUNTPOINT/etc/openqrm/openqrm-initrd-default.tgz ]; then
+			INITRD_TEMPLATE="-t $MOUNTPOINT/etc/openqrm/openqrm-initrd-default.tgz"
+		fi
+		INITRD_TYPE="initramfs"
+
+		# check for kernel-version
+		KERNEL_VERSION=`ls $MOUNTPOINT/lib/modules/ | sort | tail -n1`
+		if ! $OPENQRM_SERVER_BASE_DIR/openqrm/bin/openqrm kernel add -n $IMAGE_SHELF_DISTRIBUTION-$KERNEL_VERSION -v $KERNEL_VERSION -u $OPENQRM_USERNAME -p $OPENQRM_PASSWORD -l $MOUNTPOINT/ -i $INITRD_TYPE $INITRD_TEMPLATE; then
+			image_shelf_log "ERROR: Could not create kernel from Image-template $IMAGE_SHELF_FILE!"
+			openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+			openqrm_post_event 0 "get" 3 "openqrm-image-shelf" "Could not create kernel from Image-template $IMAGE_SHELF_FILE!"
+			umount $MOUNTPOINT
+			rmdir $MOUNTPOINT
+			exit 1
+		else
+			image_shelf_log "NOTICE: Created kernel from Image-template $IMAGE_SHELF_FILE"
+			openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Created kernel from Image-template $IMAGE_SHELF_FILE"
+		fi
+
+		umount $MOUNTPOINT
+		rmdir $MOUNTPOINT
+		image_shelf_log "NOTICE: Successfully created Server-image from $IMAGE_SHELF_FILE"
+		openqrm_post_event 0 "$IMAGE_SHELF_FILE" 10 "openqrm-image-shelf" "Starting to populate an Image from $IMAGE_SHELF_FILE."
+		openqrm_post_event 0 "get" 5 "openqrm-image-shelf" "Successfully created Server-image from $IMAGE_SHELF_FILE"
+
+		;;
+
+
+	*)
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+		image_shelf_usage
+		;;
+
+
+esac
+

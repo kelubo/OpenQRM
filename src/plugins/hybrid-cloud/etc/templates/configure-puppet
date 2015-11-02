@@ -1,0 +1,25 @@
+#!/bin/bash
+# configures puppet for an EC2 instance
+if [ -f /etc/debian_version ]; then
+	apt-get update
+	apt-get -y install wget screen puppet
+elif [ -f /etc/redhat-release ]; then
+	yum -y install wget screen puppet
+elif [ -f /etc/SuSE-release ]; then
+	zypper --non-interactive install wget screen puppet
+fi
+if [ -x /usr/bin/screen.real ]; then
+	RUNSCREEN="/usr/bin/screen.real"
+else
+	RUNSCREEN=`which screen`
+fi
+mkdir -p /etc/puppet/manifests/openqrm/classes
+cp -aRf /tmp/hybrid-cloud-installer/install/puppet/* /etc/puppet/manifests/openqrm/classes/
+if [ -f /etc/puppet/manifests/openqrm/classes/hybrid-cloud-server.pp ]; then
+	mv -f /etc/puppet/manifests/openqrm/classes/hybrid-cloud-server.pp /etc/puppet/manifests/openqrm/hybrid-cloud-server.pp
+	HC_HOSTNAME=`hostname`
+	sed -i -e "s#@@@HOSTNAME@@@#$HC_HOSTNAME#g" /etc/puppet/manifests/openqrm/hybrid-cloud-server.pp
+	cd /etc/puppet/manifests/openqrm/
+	puppet apply -v hybrid-cloud-server.pp
+	cd -
+fi

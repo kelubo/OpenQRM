@@ -1,0 +1,385 @@
+#!/bin/bash
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+# this script automatically manages hybrid-cloud groups
+OPENQRM_SERVER_BASE_DIR=$(dirname $0)/../../../..
+OPENQRM_SERVER_BASE_DIR=$(pushd $OPENQRM_SERVER_BASE_DIR > /dev/null && echo $PWD && popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+# unblock starting command queue early for non-blocking + ui commands
+# only blocking commands
+export OPENQRM_SOURCE_DIR="$OPENQRM_SERVER_BASE_DIR/openqrm/"
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-package-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/include/openqrm-plugin-hybrid-cloud-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/openqrm-plugin-hybrid-cloud.conf
+# get the ip config
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+openqrm_server_get_config
+export LANG=C
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+# stat dir
+HYBRID_CLOUD_STAT_DIR="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/web/hybrid-cloud-stat/"
+
+if [ "$OPENQRM_CUSTOM_JAVA_HOME" != "" ]; then
+	export JAVA_HOME=$OPENQRM_CUSTOM_JAVA_HOME
+	export PATH=$JAVA_HOME/bin:$PATH
+fi
+if [ "$OPENQRM_CUSTOM_EC2_API_HOME" != "" ]; then
+	export EC2_HOME=$OPENQRM_CUSTOM_EC2_API_HOME
+	export PATH=$OPENQRM_CUSTOM_EC2_API_HOME/bin:$PATH
+fi
+if [ "$OPENQRM_CUSTOM_EC2_AMI_HOME" != "" ]; then
+	export EC2_AMITOOL_HOME=$OPENQRM_CUSTOM_EC2_AMI_HOME
+	export EC2_AMI_HOME=$OPENQRM_CUSTOM_EC2_AMI_HOME
+	export PATH=$OPENQRM_CUSTOM_EC2_AMI_HOME/bin:$PATH
+fi
+
+# let only root run this script
+WHOAMI=`whoami`
+if [ "$WHOAMI" != "root" ]; then
+	echo "ERROR: Please run this script as root!"
+	exit 6
+fi
+
+# check deps
+if ! check_hybrid_cloud_deps; then
+	if [ "$NON_BLOCKING" != "true" ]; then
+		openqrm_unblock_starting_queue $@
+	fi
+	exit 1
+fi
+
+# create stat dir
+if [ ! -d "$HYBRID_CLOUD_STAT_DIR" ]; then
+	mkdir -p $HYBRID_CLOUD_STAT_DIR
+	chmod -R 777 $HYBRID_CLOUD_STAT_DIR
+fi
+
+
+function hybrid_cloud_usage() {
+	echo "Usage : $0 describe_groups <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-ar regsion> [-f filter]"
+	echo "        $0 create <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-ar regsion> <-gn group-name> <-gd description> [-gv vpc-group]"
+	echo "        $0 remove <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-ar regsion> <-gn group-name>"
+	echo "        $0 remove_perm <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t aws/euca> <-ar regsion> <-gn group-name>"
+	echo ""
+	echo "        $0 describe_groups <-n account-name> <-i account-id> <-u username> <-p passsword> <-q host-ip> <-x portnumber> <-e endpoint> <-g tenant-name> <-t lc-openstack>"
+	echo ""
+	echo "Optional parameters:"
+	echo "             [--openqrm-ui-user <username>]"
+	echo "             [--openqrm-internal-cmd <true/false>]"
+	echo "             [--openqrm-cmd-mode <regular/background/fork>]"
+	exit 1
+}
+
+# debugging
+# exec 2>> /var/log/ec2-commands.log
+# set -x
+
+
+FULL_COMMANDLINE="$0 $@"
+HYBRID_CLOUD_COMMAND=$1
+shift
+
+while [ $# -ne 0 ]; do
+	case "$1" in
+		-i)
+			PARAM_HYBRID_CLOUD_ACCOUNT_ID=$2
+			shift
+			;;
+		-n)
+			PARAM_HYBRID_CLOUD_ACCOUNT_NAME=$2
+			shift
+			;;
+		-t)
+			PARAM_HYBRID_CLOUD_ACCOUNT_TYPE=$2
+			shift
+			;;
+		-O)
+			PARAM_HYBRID_CLOUD_ACCESS_KEY=$2
+			shift
+			;;
+		-W)
+			PARAM_HYBRID_CLOUD_SECRET_KEY=$2
+			shift
+			;;
+		-u)
+			PARAM_HYBRID_CLOUD_USERNAME=$2
+			shift
+			;;
+		-p)
+			PARAM_HYBRID_CLOUD_PASSWORD=$2
+			shift
+			;;
+		-q)
+			PARAM_HYBRID_CLOUD_HOST=$2
+			shift
+			;;
+		-x)
+			PARAM_HYBRID_CLOUD_PORT=$2
+			shift
+			;;
+		-e)
+			PARAM_HYBRID_CLOUD_ENDPOINT=$2
+			shift
+			;;
+		-g)
+			PARAM_HYBRID_CLOUD_TENANT=$2
+			shift
+			;;
+		-f)
+			PARAM_GROUP_LIST_FILTER=$2
+			shift
+			;;
+		-ar)
+			PARAM_GROUP_REGION=$2
+			shift
+			;;
+		-gi)
+			PARAM_GROUP_ID=$2
+			shift
+			;;
+		-gn)
+			PARAM_GROUP_NAME=$2
+			shift
+			;;
+		-gd)
+			PARAM_GROUP_DESCRIPTION=$2
+			shift
+			;;
+		-gv)
+			PARAM_GROUP_VPC=$2
+			shift
+			;;
+		-pt)
+			PARAM_PERMISSION_PROTOCOL=$2
+			shift
+			;;
+		-pp)
+			PARAM_PERMISSION_PORT=$2
+			shift
+			;;
+		--openqrm-ui-user)
+			OPENQRM_UI_USER=$2
+			shift
+			;;
+		--openqrm-internal-cmd)
+			OPENQRM_INTERNAL_CMD=$2
+			shift
+			;;
+		--openqrm-cmd-mode)
+			OPENQRM_CMD_MODE=$2
+			shift
+			;;
+
+		*)
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			echo "ERROR: Free commandline arguments are not allowed"
+			hybrid_cloud_usage
+			exit 6
+			;;
+	esac
+	shift
+done
+
+# checks
+if [ "$HYBRID_CLOUD_COMMAND" == "" ]; then
+	openqrm_unblock_starting_queue $FULL_COMMANDLINE
+	hybrid_cloud_usage
+fi
+if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_ID" == "" ] && [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_NAME" == "" ]; then
+	if [ "$NON_BLOCKING" != "true" ]; then
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+	fi
+	hybrid_cloud_usage
+fi
+
+
+# map the cloud types to the utils names
+case "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" in
+	aws)
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/commands/aws.conf
+		check_hybrid_cloud_deps_ec2
+		if  [ "$PARAM_HYBRID_CLOUD_ACCESS_KEY" == "" ] || [ "$PARAM_HYBRID_CLOUD_SECRET_KEY" == "" ]; then
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			hybrid_cloud_usage
+		fi
+		# set region
+		if [ "$PARAM_INSTANCE_REGION" != "" ]; then
+			PARAM_INSTANCE_REGION_PARAMETER=" --region $PARAM_INSTANCE_REGION"
+		fi
+		HYBRID_CLOUD_ACCOUNT="-O $PARAM_HYBRID_CLOUD_ACCESS_KEY -W $PARAM_HYBRID_CLOUD_SECRET_KEY"
+		;;
+	euca)
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/commands/euca.conf
+		check_hybrid_cloud_deps_euca
+		if  [ "$PARAM_HYBRID_CLOUD_ACCESS_KEY" == "" ] || [ "$PARAM_HYBRID_CLOUD_SECRET_KEY" == "" ]; then
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			hybrid_cloud_usage
+		fi
+		# set region
+		if [ "$PARAM_INSTANCE_REGION" != "" ]; then
+			PARAM_INSTANCE_REGION_PARAMETER=" --region $PARAM_INSTANCE_REGION"
+		fi
+		HYBRID_CLOUD_ACCOUNT="-O $PARAM_HYBRID_CLOUD_ACCESS_KEY -W $PARAM_HYBRID_CLOUD_SECRET_KEY"
+		;;
+	lc-openstack)
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/commands/lc-openstack.conf
+		if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_NAME" == "" ] || [ "$PARAM_HYBRID_CLOUD_USERNAME" == "" ] || [ "$PARAM_HYBRID_CLOUD_PASSWORD" == "" ] || [ "$PARAM_HYBRID_CLOUD_HOST" == "" ] || [ "$PARAM_HYBRID_CLOUD_PORT" == "" ] || [ "$PARAM_HYBRID_CLOUD_ENDPOINT" == "" ] || [ "$PARAM_HYBRID_CLOUD_TENANT" == "" ]; then
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			hybrid_cloud_usage
+		fi
+		HYBRID_CLOUD_ACCOUNT="--provider OPENSTACK --username $PARAM_HYBRID_CLOUD_USERNAME --password $PARAM_HYBRID_CLOUD_PASSWORD --host $PARAM_HYBRID_CLOUD_HOST --port $PARAM_HYBRID_CLOUD_PORT --endpoint $PARAM_HYBRID_CLOUD_ENDPOINT --tenant $PARAM_HYBRID_CLOUD_TENANT"
+		;;
+esac
+
+if [ "$OPENQRM_UI_USER" != "" ]; then
+	OPENQRM_UI_USER_PARAMETER=" --openqrm-ui-user $OPENQRM_UI_USER"
+fi
+
+
+# main
+case "$HYBRID_CLOUD_COMMAND" in
+	describe_groups)
+		if [ "$PARAM_GROUP_LIST_FILTER" != "" ]; then
+			PARAM_GROUP_LIST_FILTER_PARAMETER=" -F group-name=${PARAM_GROUP_LIST_FILTER}*"
+		fi
+		CONF_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_groups.log.tmp
+		COMPONENTS_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.group_compontens.log.tmp
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$DESCRIBE_GROUPS $HYBRID_CLOUD_ACCOUNT $PARAM_GROUP_LIST_FILTER_PARAMETER $PARAM_GROUP_REGION_PARAMETER > $COMPONENTS_LOG &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		HYBRID_CLOUD_RET=$?
+		if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+			openqrm_post_event 0 "describe_groups" 3 "openqrm-hybrid-cloud-group" "Could not list cloud groups for account $PARAM_HYBRID_CLOUD_ACCOUNT_NAME!"
+		else
+			while read line; do
+				if echo $line | grep ^GROUP 1>/dev/null; then
+					GROUP_ID=`echo $line | awk '{ print $2 }'`
+					GROUP_NAME=`echo $line | awk '{ print $4 }'`
+					GROUP_DESCRIPTION=`echo $line | awk '{ print $5" "$6" "$7" "$8" "$9" "$10 }'`
+					echo "GROUP@${GROUP_ID}@${GROUP_NAME}@${GROUP_DESCRIPTION}@@@@@" >> $CONF_LOG
+				elif echo $line | grep ^PERMISSION | grep -w CIDR 1>/dev/null; then
+					PERMISSION_GROUP_NAME=`echo $line | awk '{ print $3 }'`
+					PERMISSION_GROUP_PORT=`echo $line | awk '{ print $6 }'`
+					if [ "$PERMISSION_GROUP_PORT" == "TO" ]; then
+						continue
+					fi
+					PERMISSION_GROUP_PROTOCOL=`echo $line | awk '{ print $5 }'`
+					echo "PERMISSION@@${PERMISSION_GROUP_NAME}@@${PERMISSION_GROUP_PROTOCOL}@${PERMISSION_GROUP_PORT}@@@@" >> $CONF_LOG
+				fi
+			done < $COMPONENTS_LOG
+		fi
+		touch $CONF_LOG
+		chmod -R 777 $CONF_LOG
+		mv -f $CONF_LOG $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_groups.log
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	create)
+		if [ "$PARAM_GROUP_NAME" == "" ] || [ "$PARAM_GROUP_DESCRIPTION" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		PARAM_GROUP_DESCRIPTION=`echo $PARAM_GROUP_DESCRIPTION | sed -e "s/@/ /g"`
+		PARAM_GROUP_DESCRIPTION_PARAMETER="-d \"$PARAM_GROUP_DESCRIPTION\""
+		PARAM_GROUP_VPC_PARAMETER=""
+		if [ "$PARAM_GROUP_VPC" != "" ]; then
+			PARAM_GROUP_VPC_PARAMETER="-c $PARAM_GROUP_VPC"
+		fi
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$CREATE_GROUP $HYBRID_CLOUD_ACCOUNT $PARAM_GROUP_REGION_PARAMETER $PARAM_GROUP_NAME $PARAM_GROUP_DESCRIPTION_PARAMETER $PARAM_GROUP_VPC_PARAMETER &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+	remove)
+		if [ "$PARAM_GROUP_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$REMOVE_GROUP $HYBRID_CLOUD_ACCOUNT $PARAM_GROUP_REGION_PARAMETER $PARAM_GROUP_NAME &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+	remove_perm)
+		if [ "$PARAM_GROUP_NAME" == "" ] || [ "$PARAM_PERMISSION_PROTOCOL" == "" ] || [ "$PARAM_PERMISSION_PORT" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$REVOKE $HYBRID_CLOUD_ACCOUNT $PARAM_GROUP_REGION_PARAMETER $PARAM_GROUP_NAME -P $PARAM_PERMISSION_PROTOCOL -p $PARAM_PERMISSION_PORT &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+	add_perm)
+		if [ "$PARAM_GROUP_NAME" == "" ] || [ "$PARAM_PERMISSION_PROTOCOL" == "" ] || [ "$PARAM_PERMISSION_PORT" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$AUTHORIZE $HYBRID_CLOUD_ACCOUNT $PARAM_GROUP_REGION_PARAMETER $PARAM_GROUP_NAME -P $PARAM_PERMISSION_PROTOCOL -p $PARAM_PERMISSION_PORT &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	*)
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+		hybrid_cloud_usage
+		;;
+
+
+esac
+

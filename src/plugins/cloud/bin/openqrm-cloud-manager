@@ -1,0 +1,185 @@
+#!/bin/bash
+# this script automatically manages cloud
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+OPENQRM_SERVER_BASE_DIR=$(dirname $0)/../../../..
+OPENQRM_SERVER_BASE_DIR=$(pushd $OPENQRM_SERVER_BASE_DIR > /dev/null && echo $PWD && popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+# unblock starting command queue early for non-blocking + ui commands
+CLOUD_MANAGER_COMMAND=$1
+if [ "$CLOUD_MANAGER_COMMAND" == "setup-graph" ] || [ "$CLOUD_MANAGER_COMMAND" == "setup-graph-ldap" ] || [ "$CLOUD_MANAGER_COMMAND" == "remove-graph" ]; then
+	openqrm_unblock_starting_queue $@
+	NON_BLOCKING=true
+fi
+
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/include/openqrm-plugin-cloud-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/openqrm-plugin-cloud.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+openqrm_server_get_config
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+export LANG=C
+THISDIR=`pwd`
+
+# let only root run this script
+WHOAMI=`whoami`
+if [ "$WHOAMI" != "root" ]; then
+	echo "ERROR: Please run this script as root!"
+	exit 6
+fi
+
+
+function cloud_manager_usage() {
+	echo "Usage : $0 enable-ssl"
+	echo "      : $0 setup-graph <cloud-appliancename> <cloud-username> <cloud-userpassword> "
+	echo "      : $0 setup-graph-ldap <cloud-appliancename> <cloud-username> <cloud-ldap-host> <cloud-ldap-host> <cloud-ldap-port> <cloud-ldap-base-dn> <cloud-ldap-password> "
+	echo "      : $0 remove-graph <cloud-appliancename> <cloud-username>"
+	echo "      : $0 update-soap"
+
+	exit 1
+}
+
+CLOUD_APPLIANCE=$2
+CLOUD_USER=$3
+CLOUD_LDAP_HOST=$4
+CLOUD_LDAP_PORT=$5
+CLOUD_LDAP_BASE_DN=$6
+CLOUD_LDAP_PASSWORD=$7
+
+# main
+CLOUD_MANAGER_COMMAND=$1
+case "$CLOUD_MANAGER_COMMAND" in 
+
+
+	setup-graph)
+		CLOUD_APPLIANCE=$2
+		CLOUD_USER=$3
+		CLOUD_PASS=$4
+
+		# create user via htpasswd + basic auth
+		mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/users/$CLOUD_USER
+		cloud_manager_log openqrm-cloud-manager "Setting up access to collectd graphs for user $CLOUD_USER with password $CLOUD_PASS to appliance $CLOUD_APPLIANCE."
+		CLOUD_USER_HTPASSWD="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/users/$CLOUD_USER/.htpasswd"
+		if [ -f "$CLOUD_USER_HTPASSWD" ]; then
+			htpasswd -b $CLOUD_USER_HTPASSWD $CLOUD_USER $CLOUD_PASS
+		else
+			cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/httpd/openqrm-user-htaccess.conf |   \
+				sed -e "s#@@CLOUD_USER@@#$CLOUD_USER#g" |   \
+				sed -e "s#@@OPENQRM_WEBSERVER_DOCUMENT_ROOT@@#$OPENQRM_WEBSERVER_DOCUMENT_ROOT#g" > $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/users/$CLOUD_USER/.htaccess
+		   htpasswd -c -b $CLOUD_USER_HTPASSWD $CLOUD_USER $CLOUD_PASS
+		fi
+		cd $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/users/$CLOUD_USER
+		ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/collectd/web/graphs/$CLOUD_APPLIANCE .
+		cd $THISDIR
+		;;
+
+	setup-graph-ldap)
+		CLOUD_APPLIANCE=$2
+		CLOUD_USER=$3
+		CLOUD_LDAP_HOST=$4
+		CLOUD_LDAP_PORT=$5
+		CLOUD_LDAP_BASE_DN=$6
+		CLOUD_LDAP_PASSWORD=$7
+
+		mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/users/$CLOUD_USER
+		cloud_manager_log openqrm-cloud-manager "Setting up access to collectd graphs for ldap user $CLOUD_USER to appliance $CLOUD_APPLIANCE."
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/httpd/openqrm-ldap-user-htaccess.conf |   \
+			sed -e "s#@@CLOUD_USER@@#$CLOUD_USER#g" |   \
+			sed -e "s#@@CLOUD_LDAP_HOST@@#$CLOUD_LDAP_HOST#g" |   \
+			sed -e "s#@@CLOUD_LDAP_PORT@@#$CLOUD_LDAP_PORT#g" |   \
+			sed -e "s#@@CLOUD_LDAP_BASE_DN@@#$CLOUD_LDAP_BASE_DN#g" |   \
+			sed -e "s#@@CLOUD_LDAP_PASSWORD@@#$CLOUD_LDAP_PASSWORD#g" > $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/users/$CLOUD_USER/.htaccess
+		cd $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/users/$CLOUD_USER
+		ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/collectd/web/graphs/$CLOUD_APPLIANCE .
+		cd $THISDIR
+		;;
+
+
+	remove-graph)
+		CLOUD_APPLIANCE=$2
+		CLOUD_USER=$3
+		CLOUD_PASS=$4
+		cloud_manager_log openqrm-cloud-manager "Removing access to collectd graphs for user $CLOUD_USER to appliance $CLOUD_APPLIANCE"
+		rm -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/users/$CLOUD_USER/$CLOUD_APPLIANCE
+		;;
+
+
+
+
+
+	enable-ssl)
+		# TODO
+		PRIVATE_KEY=$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/ssl/private/private.key
+		CERTIFICATE_FILE=$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/ssl/cerst/openqrm.crt
+		VALID_DAYS=3650
+
+		echo Delete old private key and create dir, they may not exist
+		mkdir -p `dirname $PRIVATE_KEY`
+		mkdir -p `dirname $CERTIFICATE_FILE`
+		rm -f $PRIVATE_KEY
+		echo Create new private/public-keys without passphrase for server
+		openssl genrsa -out $PRIVATE_KEY 1024
+
+		echo Create selfsigned certificate
+		rm -f $CERTIFICATE_FILE
+		# From man req:
+		#  -x509
+		#    this option outputs a self signed certificate instead
+		#    of a certificate request. This is typically used to
+		#    generate a test certificate or a self signed root CA.
+		#    The extensions added to the certificate (if any) are
+		#    specified in the configuration file.
+
+		openssl req -new \
+				-days $VALID_DAYS \
+				-key $PRIVATE_KEY \
+				-x509 \
+				-out $CERTIFICATE_FILE
+
+		echo private-keyfile is $PRIVATE_KEY
+		echo server-certificate-file is $CERTIFICATE_FILE
+
+		# ;) please do the cat/sed-magic for the ssl https.conf here
+		# the template you will find in the cloud-plugins etc/httpd/ dir
+		# btw: when you source openqrm-server.conf (the main conf file)
+		# you will get the doc-root dir for the different supported linux-distris
+
+
+		;;
+
+
+
+	update-soap)
+		# update the wdsl definitions
+		echo "Updating openQRM Cloud SOAP webservice configuration"
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/web/soap/cloudadmin.wdsl	| \
+			sed -e "s/@@OPENQRM_SERVER_IP_ADDRESS@@/$OPENQRM_SERVER_IP_ADDRESS/g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/cloudadmin.wdsl
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/soap/clouduser.wdsl	| \
+			sed -e "s/@@OPENQRM_SERVER_IP_ADDRESS@@/$OPENQRM_SERVER_IP_ADDRESS/g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/clouduser.wdsl
+		# compat webservices
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/web/soap/cloudadmin.compat.wdsl	| \
+			sed -e "s/@@OPENQRM_SERVER_IP_ADDRESS@@/$OPENQRM_SERVER_IP_ADDRESS/g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/cloudadmin.compat.wdsl
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/soap/clouduser.compat.wdsl	| \
+			sed -e "s/@@OPENQRM_SERVER_IP_ADDRESS@@/$OPENQRM_SERVER_IP_ADDRESS/g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/clouduser.compat.wdsl
+		;;
+
+
+	*)
+		cloud_manager_usage
+		;;
+
+
+esac
+

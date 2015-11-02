@@ -1,0 +1,551 @@
+#!/bin/bash
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+# this script automatically manages hybrid-cloud volumes
+OPENQRM_SERVER_BASE_DIR=$(dirname $0)/../../../..
+OPENQRM_SERVER_BASE_DIR=$(pushd $OPENQRM_SERVER_BASE_DIR > /dev/null && echo $PWD && popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+# unblock starting command queue early for non-blocking + ui commands
+# only blocking commands
+export OPENQRM_SOURCE_DIR="$OPENQRM_SERVER_BASE_DIR/openqrm/"
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-package-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/include/openqrm-plugin-hybrid-cloud-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/openqrm-plugin-hybrid-cloud.conf
+# get the ip config
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+openqrm_server_get_config
+export LANG=C
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+# stat dir
+HYBRID_CLOUD_STAT_DIR="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/web/hybrid-cloud-stat/"
+
+if [ "$OPENQRM_CUSTOM_JAVA_HOME" != "" ]; then
+	export JAVA_HOME=$OPENQRM_CUSTOM_JAVA_HOME
+	export PATH=$JAVA_HOME/bin:$PATH
+fi
+if [ "$OPENQRM_CUSTOM_EC2_API_HOME" != "" ]; then
+	export EC2_HOME=$OPENQRM_CUSTOM_EC2_API_HOME
+	export PATH=$OPENQRM_CUSTOM_EC2_API_HOME/bin:$PATH
+fi
+if [ "$OPENQRM_CUSTOM_EC2_AMI_HOME" != "" ]; then
+	export EC2_AMITOOL_HOME=$OPENQRM_CUSTOM_EC2_AMI_HOME
+	export EC2_AMI_HOME=$OPENQRM_CUSTOM_EC2_AMI_HOME
+	export PATH=$OPENQRM_CUSTOM_EC2_AMI_HOME/bin:$PATH
+fi
+
+# let only root run this script
+WHOAMI=`whoami`
+if [ "$WHOAMI" != "root" ]; then
+	echo "ERROR: Please run this script as root!"
+	exit 6
+fi
+
+# check deps
+if ! check_hybrid_cloud_deps; then
+	if [ "$NON_BLOCKING" != "true" ]; then
+		openqrm_unblock_starting_queue $@
+	fi
+	exit 1
+fi
+
+# create stat dir
+if [ ! -d "$HYBRID_CLOUD_STAT_DIR" ]; then
+	mkdir -p $HYBRID_CLOUD_STAT_DIR
+	chmod -R 777 $HYBRID_CLOUD_STAT_DIR
+fi
+
+
+function hybrid_cloud_usage() {
+	echo "Usage : $0 describe_volumes <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t cloud-type> <-ar region> [-f filter]"
+	echo "        $0 create <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t cloud-type> <-ar region> <-m volume-size> <-az availability-zone> <-at type> [-o iops] [-s snapshot]"
+	echo "        $0 remove <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t cloud-type> <-ar region> <-a volume-name>"
+	echo "        $0 attach/detach <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t cloud-type> <-ar region> <-a volume-name> <-instance-name> <-d device-name>"
+	echo "        $0 describe_snapshots <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t cloud-type> <-ar region> [-f filter] [-ap public/private]"
+	echo "        $0 snap <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t cloud-type> <-ar region> <-a volume-name> <-d description>"
+	echo "        $0 remove_snap <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t cloud-type> <-ar region> <-s snapshot-name>"
+	echo "        $0 configuration/instance_configuration <-n account-name> <-i account-id> <-O access_key> <-W secret_key> <-t cloud-type> <-ar region>"
+	echo ""
+	echo "Optional parameters:"
+	echo "             [--openqrm-ui-user <username>]"
+	echo "             [--openqrm-internal-cmd <true/false>]"
+	echo "             [--openqrm-cmd-mode <regular/background/fork>]"
+	exit 1
+}
+
+# debugging
+# exec 2>> /var/log/ec2-ebs-commands.log
+# set -x
+
+
+FULL_COMMANDLINE="$0 $@"
+HYBRID_CLOUD_COMMAND=$1
+shift
+
+while [ $# -ne 0 ]; do
+	case "$1" in
+		-i)
+			PARAM_HYBRID_CLOUD_ACCOUNT_ID=$2
+			shift
+			;;
+		-n)
+			PARAM_HYBRID_CLOUD_ACCOUNT_NAME=$2
+			shift
+			;;
+		-t)
+			PARAM_HYBRID_CLOUD_ACCOUNT_TYPE=$2
+			shift
+			;;
+		-O)
+			PARAM_HYBRID_CLOUD_ACCESS_KEY=$2
+			shift
+			;;
+		-W)
+			PARAM_HYBRID_CLOUD_SECRET_KEY=$2
+			shift
+			;;
+		-x)
+			PARAM_INSTANCE_ID=$2
+			shift
+			;;
+		-f)
+			PARAM_VOLUME_LIST_FILTER=$2
+			shift
+			;;
+		-m)
+			PARAM_VOLUME_SIZE=$2
+			shift
+			;;
+		-s)
+			PARAM_VOLUME_SNAPSHOT=$2
+			shift
+			;;
+		-d)
+			PARAM_VOLUME_SNAPSHOT_DESCRIPTION=$2
+			shift
+			;;
+		-r)
+			PARAM_VOLUME_ARCH=$2
+			shift
+			;;
+		-a)
+			PARAM_VOLUME_NAME=$2
+			shift
+			;;
+		-at)
+			PARAM_VOLUME_TYPE=$2
+			shift
+			;;
+		-ad)
+			PARAM_VOLUME_DEVICE=$2
+			shift
+			;;
+		-o)
+			PARAM_VOLUME_IOPS=$2
+			shift
+			;;
+		-ar)
+			PARAM_VOLUME_REGION=$2
+			shift
+			;;
+		-ap)
+			PARAM_SNAPSHOT_PERMISSIONS=$2
+			shift
+			;;
+		-az)
+			PARAM_VOLUME_AVAILABILITY_ZONE=$2
+			shift
+			;;
+		--openqrm-ui-user)
+			OPENQRM_UI_USER=$2
+			shift
+			;;
+		--openqrm-internal-cmd)
+			OPENQRM_INTERNAL_CMD=$2
+			shift
+			;;
+		--openqrm-cmd-mode)
+			OPENQRM_CMD_MODE=$2
+			shift
+			;;
+
+		*)
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			echo "ERROR: Free commandline arguments are not allowed"
+			hybrid_cloud_usage
+			exit 6
+			;;
+	esac
+	shift
+done
+
+# checks
+if [ "$HYBRID_CLOUD_COMMAND" == "" ]; then
+	openqrm_unblock_starting_queue $FULL_COMMANDLINE
+	hybrid_cloud_usage
+fi
+if [ "$PARAM_HYBRID_CLOUD_ACCOUNT_ID" == "" ] && [ "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" == "" ] || [ "$PARAM_HYBRID_CLOUD_ACCOUNT_NAME" == "" ] || [ "$PARAM_HYBRID_CLOUD_ACCESS_KEY" == "" ] || [ "$PARAM_HYBRID_CLOUD_SECRET_KEY" == "" ]; then
+	if [ "$NON_BLOCKING" != "true" ]; then
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+	fi
+	hybrid_cloud_usage
+fi
+# combine cmdline params
+HYBRID_CLOUD_ACCOUNT="-O $PARAM_HYBRID_CLOUD_ACCESS_KEY -W $PARAM_HYBRID_CLOUD_SECRET_KEY"
+
+# map the cloud types to the utils names
+case "$PARAM_HYBRID_CLOUD_ACCOUNT_TYPE" in
+	aws)
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/commands/aws.conf
+		check_hybrid_cloud_deps_ec2
+		;;
+	euca)
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/commands/euca.conf
+		check_hybrid_cloud_deps_euca
+		;;
+esac
+
+if [ "$OPENQRM_UI_USER" != "" ]; then
+	OPENQRM_UI_USER_PARAMETER=" --openqrm-ui-user $OPENQRM_UI_USER"
+fi
+
+# set region
+if [ "$PARAM_VOLUME_REGION" != "" ]; then
+	PARAM_VOLUME_REGION_PARAMETER=" --region $PARAM_VOLUME_REGION"
+fi
+
+# main
+case "$HYBRID_CLOUD_COMMAND" in
+	describe_volumes)
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$DESCRIBE_VOLUMES $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER | grep ^VOLUME > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volumes.log.tmp &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		HYBRID_CLOUD_RET=$?
+		if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+			openqrm_post_event 0 "describe_volumes" 3 "openqrm-hybrid-cloud-ebs" "Could not list cloud volumes for account $PARAM_HYBRID_CLOUD_ACCOUNT_NAME!"
+		else
+
+			# for testing
+			# echo "VOLUME	vol-1a2b3c4d	30	snap-1a2b3c4d	us-west-2a	available	YYYY-MM-DDTHH:MM:SS+0000	standard" >> $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volumes.log.tmp
+
+			sed -i -e "s/\x09/@/g" $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volumes.log.tmp
+			sed -i -e "s/\x20/@/g" $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volumes.log.tmp
+			chmod -R 777 $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volumes.log.tmp
+			mv -f $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volumes.log.tmp $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volumes.log
+		fi
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	create)
+		if [ "$PARAM_VOLUME_SIZE" == "" ] && [ "$PARAM_VOLUME_TYPE" == "" ] && [ "$PARAM_VOLUME_AVAILABILITY_ZONE" == "" ] && [ "$PARAM_VOLUME_REGION_PARAMETER" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		PARAM_VOLUME_IOPS_PARAMETER=""
+		if [ "$PARAM_VOLUME_TYPE" == "io1" ]; then
+			if [ "$PARAM_VOLUME_IOPS" == "" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+				hybrid_cloud_usage
+			else
+				PARAM_VOLUME_IOPS_PARAMETER="-i $PARAM_VOLUME_IOPS"
+			fi
+
+		fi
+		# from snapshot ?
+		PARAM_VOLUME_SNAPSHOT_PARAMETER=""
+		if [ "$PARAM_VOLUME_SNAPSHOT" != "" ]; then
+			PARAM_VOLUME_SNAPSHOT_PARAMETER="--snapshot $PARAM_VOLUME_SNAPSHOT"
+		fi
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$CREATE_VOLUME $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER -s $PARAM_VOLUME_SIZE -t $PARAM_VOLUME_TYPE $PARAM_VOLUME_IOPS_PARAMETER $PARAM_VOLUME_SNAPSHOT_PARAMETER -z $PARAM_VOLUME_AVAILABILITY_ZONE > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.create_volume.log &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		VOLUME_ID=`grep ^VOLUME $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.create_volume.log | awk '{ print $2 }'`
+		if [ "$VOLUME_ID" == "" ]; then
+			openqrm_post_event 0 "create" 3 "openqrm-hybrid-cloud-ebs" "Error creating EBS volume"
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+
+			exit 1
+		fi
+		rm -f $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.create_volume.log
+		echo "$VOLUME_ID" > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.create_volume.volume.tmp
+		chmod 777 $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.create_volume.volume.tmp
+		mv $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.create_volume.volume.tmp $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.create_volume.volume
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+	remove)
+		if [ "$PARAM_VOLUME_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$REMOVE_VOLUME $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER $PARAM_VOLUME_NAME &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		HYBRID_CLOUD_RET=$?
+		if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+			openqrm_post_event 0 "remove" 3 "openqrm-hybrid-cloud-ebs" "Error removing volume $PARAM_VOLUME_NAME!"
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+
+			exit 1
+		fi
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	attach)
+		if [ "$PARAM_VOLUME_NAME" == "" ] || [ "$PARAM_INSTANCE_ID" == "" ] || [ "$PARAM_VOLUME_DEVICE" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$ATTACH_VOLUME $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER $PARAM_VOLUME_NAME -i $PARAM_INSTANCE_ID -d $PARAM_VOLUME_DEVICE &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		HYBRID_CLOUD_RET=$?
+		if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+			openqrm_post_event 0 "attach" 3 "openqrm-hybrid-cloud-ebs" "Error attaching volume $PARAM_VOLUME_NAME to $PARAM_INSTANCE_ID as $PARAM_VOLUME_DEVICE!"
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+
+			exit 1
+		fi
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	detach)
+		if [ "$PARAM_VOLUME_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$DETACH_VOLUME $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER $PARAM_VOLUME_NAME &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		HYBRID_CLOUD_RET=$?
+		if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+			openqrm_post_event 0 "attach" 3 "openqrm-hybrid-cloud-ebs" "Error attaching volume $PARAM_VOLUME_NAME! Forcing detach!"
+			$DETACH_VOLUME $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER $PARAM_VOLUME_NAME --force &
+			hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+			HYBRID_CLOUD_RET=$?
+			if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+				openqrm_post_event 0 "attach" 3 "openqrm-hybrid-cloud-ebs" "Error force-detach of volume $PARAM_VOLUME_NAME!"
+
+				openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+				trap '' EXIT
+
+				exit 1
+			fi
+		fi
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	describe_snapshots)
+		if [ "$PARAM_VOLUME_LIST_FILTER" != "" ]; then
+			PARAM_VOLUME_LIST_FILTER_PARAMETER=" -F description=${PARAM_VOLUME_LIST_FILTER}*"
+		fi
+		if [ "$PARAM_SNAPSHOT_PERMISSIONS" == "" ]; then
+			PARAM_SNAPSHOT_PERMISSIONS="public"
+		fi
+		if [ "$PARAM_SNAPSHOT_PERMISSIONS" == "public" ]; then
+			PARAM_SNAPSHOT_PERMISSIONS_FILTER="-r all"
+		elif [ "$PARAM_SNAPSHOT_PERMISSIONS" == "private" ]; then
+			PARAM_SNAPSHOT_PERMISSIONS_FILTER="-o self"
+			PARAM_VOLUME_LIST_FILTER_PARAMETER=""
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$DESCRIBE_SNAPSHOTS $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER $PARAM_VOLUME_LIST_FILTER_PARAMETER $PARAM_SNAPSHOT_PERMISSIONS_FILTER | grep ^SNAPSHOT > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_snapshots.log.tmp &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		HYBRID_CLOUD_RET=$?
+		if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+			openqrm_post_event 0 "describe_snapshots" 3 "openqrm-hybrid-cloud-ebs" "Could not list cloud snapshots for account $PARAM_HYBRID_CLOUD_ACCOUNT_NAME!"
+		else
+			sed -i -e "s/\x09/@/g" $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_snapshots.log.tmp
+			sed -i -e "s/\x20/@/g" $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_snapshots.log.tmp
+			chmod -R 777 $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_snapshots.log.tmp
+			mv -f $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_snapshots.log.tmp $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_snapshots.log
+		fi
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	snap)
+		if [ "$PARAM_VOLUME_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		PARAM_VOLUME_SNAPSHOT_DESCRIPTION_PARAMETER=""
+		if [ "PARAM_VOLUME_SNAPSHOT_DESCRIPTION" != "" ]; then
+			PARAM_VOLUME_SNAPSHOT_DESCRIPTION=`echo $PARAM_VOLUME_SNAPSHOT_DESCRIPTION | sed -e "s/@/ /g"`
+			PARAM_VOLUME_SNAPSHOT_DESCRIPTION_PARAMETER="-d \"$PARAM_VOLUME_SNAPSHOT_DESCRIPTION\""
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$CREATE_SNAPSHOT $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER $PARAM_VOLUME_NAME $PARAM_VOLUME_SNAPSHOT_DESCRIPTION_PARAMETER > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.snap.log &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		SNAPSHOT_ID=`grep ^SNAPSHOT $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.snap.log | awk '{ print $2 }'`
+		if [ "$SNAPSHOT_ID" == "" ]; then
+			openqrm_post_event 0 "snap" 3 "openqrm-hybrid-cloud-ebs" "Error creating snapshot from EBS volume $PARAM_VOLUME_NAME"
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+
+			exit 1
+		fi
+		rm -f $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.snap.log
+		echo "$SNAPSHOT_ID" > $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.snap.snapshot.tmp
+		chmod 777 $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.snap.snapshot.tmp
+		mv $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.snap.snapshot.tmp $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.snap.snapshot
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+	remove_snap)
+		if [ "$PARAM_VOLUME_SNAPSHOT" == "" ]; then
+			openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			hybrid_cloud_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$REMOVE_SNAPSHOT $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER $PARAM_VOLUME_SNAPSHOT &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		HYBRID_CLOUD_RET=$?
+		if [ "$HYBRID_CLOUD_RET" != 0 ]; then
+			openqrm_post_event 0 "remove_snap" 3 "openqrm-hybrid-cloud-ebs" "Error removing snapshot $PARAM_VOLUME_SNAPSHOT!"
+
+			openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+			trap '' EXIT
+
+			exit 1
+		fi
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+
+	configuration)
+		CONF_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volume_configuration.log.tmp
+		COMPONENTS_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volume_components.log.tmp
+
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		> $CONF_LOG
+		# availability zones
+		$DESCRIBE_AVAILABILITY_ZONES $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER > $COMPONENTS_LOG &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		while read line; do
+			EC2_AVAILABILITY_ZONE=`echo $line | awk '{ print $2 }'`
+			EC2_AVAILABILITY_ZONE_STATUS=`echo $line | awk '{ print $3 }'`
+			EC2_REGION=`echo $line | awk '{ print $4 }'`
+			if [ "$EC2_AVAILABILITY_ZONE_STATUS" == "available" ]; then
+				echo "ZONES@${EC2_AVAILABILITY_ZONE}@${EC2_REGION}" >> $CONF_LOG
+			fi
+		done < $COMPONENTS_LOG
+		# snapshots
+		$DESCRIBE_SNAPSHOTS $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER --all > $COMPONENTS_LOG &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		while read line; do
+			EC2_SNAPSHOT=`echo $line | awk '{ print $2 }'`
+			EC2_SNAPSHOT_DESCRIPTION=`echo $line | awk '{ print $9 }'`
+			echo "SNAPSHOTS@${EC2_SNAPSHOT}@${EC2_SNAPSHOT_DESCRIPTION}" >> $CONF_LOG
+		done < $COMPONENTS_LOG
+
+		chmod -R 777 $CONF_LOG
+		mv -f $CONF_LOG $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.describe_volume_configuration.log
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+
+	instance_configuration)
+		CONF_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.attach_volume_configuration.log.tmp
+		COMPONENTS_LOG=$HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.attach_volume_components.log.tmp
+		LOCK_TIME=`openqrm_lock_queue aquire hybrid-cloud`
+		trap "openqrm_lock_queue release hybrid-cloud $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		$DESCRIBE_INSTANCES $HYBRID_CLOUD_ACCOUNT $PARAM_VOLUME_REGION_PARAMETER | grep ^INSTANCE > $COMPONENTS_LOG &
+		hybrid_cloud_wait_for_timeout $! $OPENQRM_PLUGIN_HYBRID_CLOUD_REQUEST_TIMEOUT
+		while read line; do
+			EC2_INSTANCE=`echo $line | awk '{ print $2 }'`
+			EC2_INSTANCE_PUBLIC_HOSTNAME=`echo $line | awk '{ print $4 }'`
+			echo "INSTANCE@${EC2_INSTANCE}@${EC2_INSTANCE}/${EC2_INSTANCE_PUBLIC_HOSTNAME}" >> $CONF_LOG
+		done < $COMPONENTS_LOG
+		touch $CONF_LOG
+		chmod -R 777 $CONF_LOG
+		mv -f $CONF_LOG $HYBRID_CLOUD_STAT_DIR/$PARAM_HYBRID_CLOUD_ACCOUNT_ID.attach_volume_configuration.log
+
+		openqrm_lock_queue release hybrid-cloud $LOCK_TIME
+		trap '' EXIT
+		;;
+
+
+
+	*)
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+		hybrid_cloud_usage
+		;;
+
+
+esac
+

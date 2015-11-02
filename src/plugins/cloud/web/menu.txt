@@ -1,0 +1,43 @@
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+#	Title
+#	Href
+#	Alt
+#	IMG
+#	Target
+#..|Help|
+..|Portal|/cloud-portal|The openQRM Cloud||_blank
+..|User|index.php?plugin=cloud&controller=cloud-user|The User on the Cloud
+..|Projects|index.php?plugin=cloud&controller=cloud-usergroup|User Groups on the Cloud
+..|Mail|index.php?plugin=cloud&controller=cloud-mail|Send a mail to the Cloud Users
+..|Instances|index.php?plugin=cloud&controller=cloud-request|The Requests from the Users
+..|Transactions
+...|Done|index.php?plugin=cloud&controller=cloud-transaction|List of Cloud Transactions
+...|Failed|index.php?plugin=cloud&controller=cloud-transaction-failed|List of Failed Cloud Transactions
+..|Configuration
+...|Main Config|index.php?plugin=cloud&controller=cloud-config|The Cloud Configuration
+...|Products|index.php?plugin=cloud&controller=cloud-selector|Cloud Product Manager
+...|Images|index.php?plugin=cloud&controller=cloud-private-image|Cloud Images
+...|Host Pools|index.php?plugin=cloud&controller=cloud-resource-pool|Host Pool Manager
+...|Host Limits|index.php?plugin=cloud&controller=cloud-resource-limit|Host-Limit Manager
+...|Power-Saver|index.php?plugin=cloud&controller=cloud-power-saver|Power Saver Manager
+...|Ip-Mgmt|index.php?plugin=cloud&controller=cloud-ip-mgmt|Setup IP-Adressing for the Cloud
+...|Cloud NAT|index.php?plugin=cloud&controller=cloud-nat|Configure NAT for the Cloud
+..|WebService
+...|SOAP|index.php?plugin=cloud&controller=cloud-about&cloud_documentation=soap|Documentation for the Cloud SOAP WebService
+...|Admin Demo|plugins/cloud/soap/cloudadmin-soap-example-client.php|Demo for the Cloud Admin SOAP WebService||_blank
+...|User Demo|/cloud-portal/user/soap/clouduser-soap-example-client.php|Demo for the Cloud User SOAP WebService||_blank
+...|API|http://openqrm-support.de/documentation/openQRM-SOAP-API/|The API for the Cloud SOAP WebService||_blank
+..|About|index.php?plugin=cloud&controller=cloud-about|How to use

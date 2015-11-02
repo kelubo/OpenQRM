@@ -1,0 +1,197 @@
+#!/bin/bash
+# init script for the openQRM cloud-plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+OPENQRM_SERVER_BASE_DIR=$(pushd $(dirname $0)/../../../../.. > /dev/null; echo $PWD; popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/include/openqrm-plugin-cloud-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/openqrm-plugin-cloud.conf
+openqrm_server_get_config
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+# define wget to use with https
+if [ "$OPENQRM_WEB_PROTOCOL" == "https" ]; then
+	WGET_NO_CERT_CHECK="--no-check-certificate"
+fi
+
+
+function openqrm_plugin_cloud_start() {
+	echo "Starting the openQRM cloud-plugin"
+	touch $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/cloud/.running
+}
+
+
+function openqrm_plugin_cloud_stop() {
+	echo "Stopping the openQRM cloud-plugin"
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/cloud/.running
+}
+
+function openqrm_plugin_cloud_uninstall() {
+	local USERNAME=$1
+	local PASSWORD=$2
+	if [ "$USERNAME" == "" ] && [ "$PASSWORD" == "" ]; then
+		echo -n "cloud: Please give a username to uninstall the plugin : "
+		read USERNAME
+		echo
+		echo -n "cloud: Please give the password for user $USERNAME : "
+		read PASSWORD
+		echo
+	fi
+	echo "Uninstalling the openQRM cloud-plugin"
+	openqrm_plugin_cloud_stop
+
+	# removing the cloud tables
+	if ! wget -q $WGET_NO_CERT_CHECK -O /dev/null --http-user=$USERNAME --http-password=$PASSWORD "$OPENQRM_WEB_PROTOCOL://$resource_openqrmserver/openqrm/base/plugins/cloud/cloud-action.php?cloud_command=uninstall"; then
+		cloud_manager_log uninstall "ERROR: Could not drop the cloud-plugin tables in the database!"
+	fi
+	# remove boot-service + soap-service
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/boot-service-cloud.tgz
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/cloudadmin.wdsl
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/clouduser.wdsl
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/cloudadmin.compat.wdsl
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/clouduser.compat.wdsl
+	# remove netconf dir
+	rm -rf $OPENQRM_SERVER_BASE_DIR/openqrm/web/action/cloud-conf
+	# remove auth files
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal/user/.htaccess
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal/user/.htpasswd
+	# remove custom-icons
+	rm -rf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/custom-icons
+	# remove the portal
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/cloud
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/boot-service-cloud.tgz
+	if [ -f /etc/debian_version ]; then
+		rm -f /etc/apache2/conf.d/openqrm-cloud.conf
+	elif [ -f /etc/redhat-release ]; then
+		rm -f /etc/httpd/conf.d/openqrm-cloud.conf
+	elif [ -f /etc/SuSE-release ]; then
+		rm -f /etc/apache2/conf.d/openqrm-cloud.conf
+		# remove the symlink we created at init
+		if [ -h /usr/bin/htpasswd ]; then
+			rm -f /usr/bin/htpasswd
+		fi
+	fi
+	$OPENQRM_WEBSERVER_INIT reload
+
+	
+}
+
+function openqrm_plugin_cloud_init() {
+	local USERNAME=$1
+	local PASSWORD=$2
+	if [ "$USERNAME" == "" ] && [ "$PASSWORD" == "" ]; then
+		echo -n "cloud: Please give a username to init the plugin : "
+		read USERNAME
+		echo
+		echo -n "cloud: Please give the password for user $USERNAME : "
+		read PASSWORD
+		echo
+	fi
+	echo "Initializing the openQRM cloud-plugin"
+	# linking the web dir
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/web $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/cloud
+
+	# setup the wdsl definitions
+	cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/web/soap/cloudadmin.wdsl	| \
+		sed -e "s/@@OPENQRM_SERVER_IP_ADDRESS@@/$OPENQRM_SERVER_IP_ADDRESS/g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/cloudadmin.wdsl
+	cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/soap/clouduser.wdsl	| \
+		sed -e "s/@@OPENQRM_SERVER_IP_ADDRESS@@/$OPENQRM_SERVER_IP_ADDRESS/g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/clouduser.wdsl
+	# compat webservices
+	cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/web/soap/cloudadmin.compat.wdsl	| \
+		sed -e "s/@@OPENQRM_SERVER_IP_ADDRESS@@/$OPENQRM_SERVER_IP_ADDRESS/g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/cloudadmin.compat.wdsl
+	cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/soap/clouduser.compat.wdsl	| \
+		sed -e "s/@@OPENQRM_SERVER_IP_ADDRESS@@/$OPENQRM_SERVER_IP_ADDRESS/g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/clouduser.compat.wdsl
+
+	# link the web portal to the documentroot
+	# create the virtualhost + auth for the cloud web portal
+	if [ -f /etc/debian_version ]; then
+		ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/ $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal
+		# the default apache config normally does not allow to override the authconfig (needed for basic auth)
+		# so we allow it for the openqrm directory
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/httpd/openqrm-httpd.conf | sed -e "s#OPENQRM_WEBSERVER_DOCUMENT_ROOT#$OPENQRM_WEBSERVER_DOCUMENT_ROOT#g" > /etc/apache2/conf.d/openqrm-cloud.conf
+	elif [ -f /etc/redhat-release ]; then
+		ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/ $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/httpd/openqrm-httpd.conf | sed -e "s#OPENQRM_WEBSERVER_DOCUMENT_ROOT#$OPENQRM_WEBSERVER_DOCUMENT_ROOT#g" > /etc/httpd/conf.d/openqrm-cloud.conf
+	elif [ -f /etc/SuSE-release ]; then
+		# for suse we link the htpasswd2 to htpasswd
+		HTPASSWD=`htpasswd2`
+		ln -s $HTPASSWD /usr/bin/htpasswd
+		ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/ $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal
+		cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/httpd/openqrm-httpd.conf | sed -e "s#OPENQRM_WEBSERVER_DOCUMENT_ROOT#$OPENQRM_WEBSERVER_DOCUMENT_ROOT#g" > /etc/apache2/conf.d/openqrm-cloud.conf
+		# we should already have a special treatment for suse to allow followsymlinks in the default-setup
+	fi
+	$OPENQRM_WEBSERVER_INIT reload
+	# create the .htaccess file
+	cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/etc/httpd/openqrm-htaccess.conf | sed -e "s#OPENQRM_WEBSERVER_DOCUMENT_ROOT#$OPENQRM_WEBSERVER_DOCUMENT_ROOT#g" > $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal/user/.htaccess
+	# create the default admin user
+	touch $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal/user/.htpasswd
+	chmod 666 $OPENQRM_WEBSERVER_DOCUMENT_ROOT/cloud-portal/user/.htpasswd
+
+	# creating the tables
+	if ! wget -q $WGET_NO_CERT_CHECK -O /dev/null --http-user=$USERNAME --http-password=$PASSWORD "$OPENQRM_WEB_PROTOCOL://$resource_openqrmserver/openqrm/base/plugins/cloud/cloud-action.php?cloud_command=init"; then
+		cloud_manager_log init "ERROR: Could not create the cloud-plugin tables in the database!"
+		exit 1
+	fi
+
+	# create the directory for the cloud network-config of the appliances
+	mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/web/action/cloud-conf/
+	chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/web/action/cloud-conf/
+
+	# create the directory for the custom user icons
+	mkdir -p $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/custom-icons
+	chmod 777 $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/cloud/cloud-portal/web/user/custom-icons
+	
+}
+
+
+
+
+
+
+
+USER=$2
+PASS=$3
+
+case "$1" in
+	start)
+		openqrm_plugin_cloud_start
+		;;
+	stop)
+		openqrm_plugin_cloud_stop
+		;;
+	restart)
+		openqrm_plugin_cloud_stop
+		sleep 1
+		openqrm_plugin_cloud_start
+		;;
+	init)
+		openqrm_plugin_cloud_init $USER $PASS
+		;;
+	uninstall)
+		openqrm_plugin_cloud_uninstall $USER $PASS
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|init|uninstall}"
+		exit 1
+
+esac
+exit $?
+
+
+
+

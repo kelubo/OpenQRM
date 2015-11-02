@@ -1,0 +1,23 @@
+# openQRM configuration file template
+
+# custom service config
+define service {
+        use                                     default-@@APPLIANCE_NAME@@-service-template
+        host_name                               @@APPLIANCE_NAME@@
+        service_description                     @@SERVICE_NAME@@
+        check_command                           check_tcp!@@SERVICE_PORT@@
+        max_check_attempts                      3
+        normal_check_interval                   5
+        retry_check_interval                    1
+        check_period                            24x7
+        notification_interval                   5
+        notification_period                     24x7
+        notification_options                    c,r
+        contact_groups                          admins
+        event_handler                           event-@@APPLIANCE_NAME@@-@@SERVICE_NAME@@-handler
+}
+
+define command{
+    command_name    event-@@APPLIANCE_NAME@@-@@SERVICE_NAME@@-handler
+    command_line    @@OPENQRM_SERVER_BASE_DIR@@/openqrm/plugins/nagios3/bin/openqrm-nagios-manager event -n @@APPLIANCE_NAME@@ -s @@SERVICE_NAME@@ -m "$SERVICESTATE$ $SERVICESTATETYPE$ $SERVICEATTEMPT$"
+}

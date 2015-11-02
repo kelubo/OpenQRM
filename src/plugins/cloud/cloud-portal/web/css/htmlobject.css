@@ -1,0 +1,409 @@
+body {
+	margin: 0px; 
+	padding: 0px;
+	font-family: Arial, sans-serif;
+
+	color: #646464;
+	overflow-y:scroll;
+}
+select,
+textarea,
+input[type="text"],
+input[type="password"],
+input[type="datetime"],
+input[type="datetime-local"],
+input[type="date"],
+input[type="month"],
+input[type="time"],
+input[type="week"],
+input[type="number"],
+input[type="email"],
+input[type="url"],
+input[type="search"],
+input[type="tel"],
+input[type="color"],
+.uneditable-input {
+	display: inline-block;
+	height: auto;
+	padding: 4px 6px;
+	font-size: 12px;
+	line-height: 20px;
+	color: #555555;
+	-webkit-border-radius: 4px;
+	-moz-border-radius: 4px;
+	border-radius: 4px;
+	border: 1px solid #ccc;
+	vertical-align: middle;
+	font-weight: normal;
+	background: white;
+}
+select[disabled],
+textarea[disabled],
+input[disabled] {
+	background: #ddd;
+}
+html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code, del, dfn, em, font, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var, dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody, tfoot, tr, th, td {
+	border:0 none;
+	font-family: Arial, sans-serif;
+	font-size: 12px;
+	font-style:inherit;
+	font-weight:inherit;
+	line-height:160%;
+	margin:0;
+	outline-color:-moz-use-text-color;
+	outline-style:none;
+	outline-width:0;
+	padding:0;
+}
+:focus {
+	outline-color:-moz-use-text-color;
+	outline-style:none;
+	outline-width:0;
+}
+sub {
+	font-size:80%;
+	vertical-align:sub;
+}
+sup {
+	font-size:80%;
+	vertical-align:super;
+}
+table p {
+	margin:0;
+}
+pre, code {
+	font-family:courier;
+}
+blockquote {
+	margin-left:0.25em;
+}
+p {
+	margin: 0;
+	padding: 0 0 0.5em;
+}
+strong, b {
+	font-weight: bold;
+}
+em, i {
+	font-style: italic;
+}
+ul, ol, dl {
+	padding-left: 30px;
+}
+ul {}
+ul ul, ul ol, ol ul, ol ol {
+	margin-bottom: 0;
+	margin-top: 0.25em;
+	padding-left: 20px;
+}
+ul li {
+	padding: 0.25em 0 0.25em 10px;
+}
+ol li {
+	padding: 0.25em 0;
+}
+dl dt {
+	font-weight: bold;
+}
+dl dd {
+	margin: 0 0 0.5em;
+}
+
+table {
+	border: 1px solid #BABABA;
+	border-collapse: collapse;
+}
+table tr th, table tr td {
+	border: 1px solid #BABABA;
+	padding: 0.5em;
+	text-align: left;
+	vertical-align: top;
+}
+table tr th {
+	background: #EBEBEB none repeat scroll 0 0;
+	font-weight: bold;
+}
+form {
+}
+fieldset {
+	border: 0 none;
+	display: block;
+	margin: 0 0 0.5em;
+	padding: 0;
+	vertical-align: top;
+}
+fieldset legend {
+	margin: 0;
+	padding: 0;
+}
+label {
+	float: none;
+	padding: 0;
+	
+}
+/* Standard */
+.floatbreaker, .clearer {
+	clear: both;
+	line-height: 0;
+	font-size: 0;
+	border: 0;
+	margin: 0;
+	padding: 0;
+}
+
+.checkbox,
+.radio {
+	border: 0px none;
+}
+
+/* 2 column element */
+.clear_col {
+	clear: both;
+}
+.col_2_left, .col_2_right {
+	float: left;
+	padding: 15px 0 0;
+	width: 48%;
+}
+.col_wrap_2 .col_inner_left {
+	padding: 0 15px 0 0;
+}
+.col_wrap_2 .col_inner_right {
+	padding: 0 0 0 15px;
+}
+
+/* Tabs */
+.htmlobject_tabs {
+	position: relative;
+	line-height: normal;
+	padding: 20px 0 0 0;
+	margin: 0;
+}
+.htmlobject_tabs ul {
+	position: relative;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.htmlobject_tabs li {
+	position: relative;
+	top: 1px;
+	float: left;
+	margin: 0 4px 0 0;
+	padding: 0;
+}
+.htmlobject_tabs li.current {
+	background: #ffffff;
+	margin-right: 4px;
+}
+.htmlobject_tabs span {
+	float: left;
+	display: block;
+	padding: 0;
+}
+.htmlobject_tabs a {
+	display: block;
+	text-decoration: none;
+	font-size: 11px;
+	padding: 5px 10px;
+}
+.htmlobject_tabs a:link, .htmlobject_tabs a:visited, .htmlobject_tabs a:hover {
+	color: black;
+}
+
+/* Tabbox */
+.htmlobject_tabs_box {
+	margin: 0;
+	padding: 10px 20px 20px 25px;
+}/* Box */
+
+.htmlobject_box {
+	margin: 0 0 10px 0;
+}
+.htmlobject_box textarea {	
+	width: 180px;
+	height: 60px;
+}
+.htmlobject_box input[type=text] {	
+	width: 180px;
+}
+.htmlobject_box .left {
+	float: left;
+	width: 140px;
+	margin: 0;
+	padding: 4px 15px 0 0;
+	text-align: right;
+}
+.htmlobject_box .left label{
+	line-height: 20px;
+}
+.htmlobject_box .right {
+	float: left;
+	margin: 0;
+	padding: 0;
+}
+.htmlobject_box.textarea .left {
+	width: 300px;
+	float: none;
+	margin: 15px 0 5px 0;
+}
+.htmlobject_box.textarea .right {
+	float: none;
+}
+.msgBox {
+	font-size: 11px;
+	display: block;
+	width: auto;
+	border: solid 1px #dddddd;
+	background-color: #FFFFE0;
+	color: black;
+	padding: 10px 15px;
+	margin: 0 0 10px 0;
+	z-index: 100;
+	border-radius: 6px;
+	box-shadow: 3px 3px 6px rgba(0, 0, 0, 0.3);
+}
+.msgBox strong {
+	font-weight: bold;
+	color: red;
+}
+
+
+/* Table */
+.htmlobject_table {
+	border-spacing: 0px;
+	width: 100%;
+	border: 0px none;
+	border-spacing: 0px;
+	border-collapse: separate;
+	font-size: 12px;
+	border-bottom: 1px solid #cccccc;
+}
+.htmlobject_td {
+	border-top : 1px solid #cccccc;
+	border-left : 1px solid #cccccc;
+	border-bottom : 0px none;
+	border-right : 0px none;
+	padding: 5px;
+	color: black;
+}
+.htmlobject_tr th {
+	background: #eee;
+	text-align: left;
+	border-top : 1px solid #cccccc;
+	border-left : 1px solid #cccccc;
+	border-bottom : 0px none;
+	border-right : 0px none;
+	padding: 5px;
+	color: black;
+	font-size: 13px;
+}
+.htmlobject_td.head {
+	border: 1px solid white !important;
+	padding: 0 !important;
+}
+.htmlobject_td.identifier {
+	text-align: center;
+	vertical-align: top;
+	width: 20px;
+}
+.htmlobject_td.sorttable {
+	border: 0px none;
+}
+.htmlobject_td.sorttable select,
+.htmlobject_td.sorttable input {
+	border: 1px solid #cccccc;
+}
+.htmlobject_td.sorttable label {
+	margin: 0 0 0 5px;
+}
+.htmlobject_td.bottom {
+	padding-top: 15px !important;
+	text-align: right;
+	border: 0px none;
+}
+.selecttable {
+	display: inline;
+	padding: 0 20px 0 0 !important;
+}
+.actiontable {
+	display: inline;
+}
+.pageturn_table {
+	display: inline;
+	border: 0;
+}
+.pageturn_table td {
+	border: 0;
+}
+.htmlobject_table .pageturn_table {
+	display: inline;
+	border: 0;
+}
+.htmlobject_table .pageturn_table td {
+	border: 0;
+}
+.htmlobject_table .pageturn_box a {
+    background: none repeat scroll 0 0 #EEEEEE;
+    border: 1px solid #CCCCCC;
+    color: #000000;
+    display: block;
+    float: left;
+    font-size: 12px;
+    font-weight: normal;
+    height: 20px;
+    line-height: 20px;
+    margin: 1px;
+    text-align: center;
+    text-decoration: none;
+    width: 24px;
+}
+.htmlobject_td.pageturn_head {
+	text-align: right;
+	border: 0 none;
+}
+.htmlobject_td.pageturn_bottom {
+	text-align: center;
+	border: 1px solid white;
+	padding: 25px 5px 5px 5px !important;
+}
+.pageturn_middle {
+	width: 170px;
+	text-align: center;
+}
+.pageturn_box {
+	margin: 5px 0;
+}
+
+.tr_hover {
+	background-color: #eee;
+	border-left: 0px none;
+	border-right: 1px solid gray !important;
+	border-top: 0px none;
+	border-bottom: 1px solid gray !important;
+}
+.tr_click {
+	background-color: #ddd;
+}
+.htmlobject_td.sort_form {
+    border: 0 none;
+    text-align: right;
+}
+.htmlobject_td.actions {
+    border: 0 none;
+    padding-top: 15px !important;
+    text-align: right;
+}
+.htmlobject_table .pageturn_head .sort_box input.offset {
+	display: none;
+}
+
+/* Links */
+.doculink {
+	background: url(../img/help.png) no-repeat top right transparent;
+	line-height: 18px;
+	display: block;
+	margin: 0; 
+	padding: 0 25px 0 0; 
+	text-decoration: none;
+}

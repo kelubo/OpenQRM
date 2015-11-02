@@ -1,0 +1,139 @@
+#!/bin/bash
+# init script for the openQRM hybrid-cloud-plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+OPENQRM_SERVER_BASE_DIR=$(pushd $(dirname $0)/../../../../.. > /dev/null; echo $PWD; popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/include/openqrm-plugin-hybrid-cloud-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/openqrm-plugin-hybrid-cloud.conf
+# get the ip config
+openqrm_server_get_config
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+export LANG=C
+# define wget to use with https
+if [ "$OPENQRM_WEB_PROTOCOL" == "https" ]; then
+	WGET_NO_CERT_CHECK="--no-check-certificate"
+fi
+
+function openqrm_plugin_hybrid_cloud_start() {
+	echo "Starting the openQRM hybrid-cloud-plugin"
+	touch $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/hybrid-cloud/.running
+}
+
+
+function openqrm_plugin_hybrid_cloud_stop() {
+	echo "Stopping the openQRM hybrid-cloud-plugin"
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/hybrid-cloud/.running
+}
+
+function openqrm_plugin_hybrid_cloud_uninstall() {
+	local USERNAME=$1
+	local PASSWORD=$2
+	if [ "$USERNAME" == "" ] && [ "$PASSWORD" == "" ]; then
+		echo -n "hybrid-cloud: Please give a username to uninstall the plugin : "
+		read USERNAME
+		echo
+		echo -n "hybrid-cloud: Please give the password for user $USERNAME : "
+		read PASSWORD
+		echo
+	fi
+	echo "Uninstalling the openQRM hybrid-cloud-plugin"
+	openqrm_plugin_hybrid_cloud_stop
+	# removing the table
+	if ! wget -q $WGET_NO_CERT_CHECK -O /dev/null --http-user=$USERNAME --http-password=$PASSWORD "$OPENQRM_WEB_PROTOCOL://$resource_openqrmserver/openqrm/base/plugins/hybrid-cloud/hybrid-cloud-action.php?hybrid_cloud_command=uninstall"; then
+		hybrid_cloud_log init "ERROR: Could not drop the hybrid-cloud-plugin tables in the database!"
+		return 1
+	fi
+	openqrm_server_remove_deployment_type $USERNAME $PASSWORD ami-deployment
+	openqrm_server_remove_virtualization_type $USERNAME $PASSWORD hybrid-cloud
+	openqrm_server_remove_virtualization_type $USERNAME $PASSWORD hybrid-cloud-vm-local
+
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/hybrid-cloud
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/boot-service-hybrid-cloud.tgz
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/image.ami-deployment.php
+
+}
+
+function openqrm_plugin_hybrid_cloud_init() {
+	local USERNAME=$1
+	local PASSWORD=$2
+	if [ "$USERNAME" == "" ] && [ "$PASSWORD" == "" ]; then
+		echo -n "hybrid-cloud: Please give a username to init the plugin : "
+		read USERNAME
+		echo
+		echo -n "hybrid-cloud: Please give the password for user $USERNAME : "
+		read PASSWORD
+		echo
+	fi
+	echo "Initializing the openQRM hybrid-cloud-plugin"
+	openqrm_server_add_deployment_type $USERNAME $PASSWORD ami-deployment ami-deployment "AMI deployment Cloud VMs" hybrid-cloud "Cloud AMI Storage"
+	openqrm_server_add_virtualization_type $USERNAME $PASSWORD hybrid-cloud "Cloud Host"
+	openqrm_server_add_virtualization_type $USERNAME $PASSWORD hybrid-cloud-vm-local "Cloud VM (localboot)"
+
+	# linking the web dir
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/web $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/hybrid-cloud
+	# link the boot-service
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/web/boot-service-hybrid-cloud.tgz $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/boot-service-hybrid-cloud.tgz
+	# image deployment
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/web/image.ami-deployment.php $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/image.ami-deployment.php
+
+	# creating the table
+	if ! wget -q $WGET_NO_CERT_CHECK -O /dev/null --http-user=$USERNAME --http-password=$PASSWORD "$OPENQRM_WEB_PROTOCOL://$resource_openqrmserver/openqrm/base/plugins/hybrid-cloud/hybrid-cloud-action.php?hybrid_cloud_command=init"; then
+		hybrid_cloud_log init "ERROR: Could not create the hybrid-cloud-plugin tables in the database!"
+		return 1
+	fi
+	# install libcloud
+	if ! pip install apache-libcloud; then
+		hybrid_cloud_log init "ERROR: Could not automatically install apache-libcloud! Please run: pip install apache-libcloud"
+		openqrm_post_event 0 "init" 3 "hybrid-cloud" "Could not automatically install apache-libcloud!"
+		openqrm_post_event 0 "init" 3 "hybrid-cloud" "Please run: pip install apache-libcloud"
+	fi
+
+}
+
+USER=$2
+PASS=$3
+
+case "$1" in
+	start)
+		openqrm_plugin_hybrid_cloud_start
+		;;
+	stop)
+		openqrm_plugin_hybrid_cloud_stop
+		;;
+	restart)
+		openqrm_plugin_hybrid_cloud_stop
+		sleep 1
+		openqrm_plugin_hybrid_cloud_start
+		;;
+	init)
+		openqrm_plugin_hybrid_cloud_init $USER $PASS
+		;;
+	uninstall)
+		openqrm_plugin_hybrid_cloud_uninstall $USER $PASS
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|init|uninstall}"
+		exit 1
+
+esac
+exit $?
+
+
+
+

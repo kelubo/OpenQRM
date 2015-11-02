@@ -1,0 +1,118 @@
+#!/bin/bash
+# this is the functions file for the hybrid-cloud-plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+################ common hybrid-cloud functions
+
+# logs for hybrid-cloud
+function hybrid_cloud_log() {
+	local COMPONENT=$1
+	shift
+	local MESSAGE=$@
+	logger -i -t "hybrid-cloud plug-in" "$COMPONENT : $MESSAGE"
+}
+
+
+# deps function
+function check_hybrid_cloud_deps() {
+	# check and fullfill dependencies
+	# screen
+	if ! openqrm_full_fill_os_dependency screen screen; then
+		return 1
+	fi
+	if [ -x /usr/bin/screen.real ]; then
+		export RUNSCREEN="/usr/bin/screen.real"
+	else
+		export RUNSCREEN=`which screen`
+	fi
+	# wget
+	if ! openqrm_full_fill_os_dependency wget wget; then
+		return 1
+	fi
+	# procmail for lockfile
+	if ! openqrm_full_fill_os_dependency lockfile procmail; then
+		return 1
+	fi
+	if ! openqrm_full_fill_os_dependency rsync rsync; then
+		return 1
+	fi
+	if ! openqrm_full_fill_os_dependency expect expect; then
+		return 1
+	fi
+}
+
+
+# deps function ec2 tools
+function check_hybrid_cloud_deps_ec2() {
+	# ec2-api-tools
+	if ! openqrm_full_fill_os_dependency ec2-describe-images latest-ec2-api-tools-from-Amazon; then
+		return 1
+	fi
+	# ec2-ami-tools
+	if ! openqrm_full_fill_os_dependency ec2-bundle-image latest-ec2-ami-tools-from-Amazon; then
+		return 1
+	fi
+}
+
+# deps function euca tools
+function check_hybrid_cloud_deps_euca() {
+	# ec2-api-tools
+	if ! openqrm_full_fill_os_dependency euca-describe-images eucatools; then
+		return 1
+	fi
+	# ec2-ami-tools
+	if ! openqrm_full_fill_os_dependency euca-bundle-image eucatools; then
+		return 1
+	fi
+}
+
+
+
+################ hybrid-cloud functions
+
+# wait until a commands returns
+function hybrid_cloud_wait_for_timeout() {
+	local CMD_PID=$1
+	local TOUT=$2
+	while (:); do
+		RUN_PID=`ps ax | awk '{ print $1 }' | grep -w $CMD_PID`
+		if [ "$RUN_PID" == "" ]; then
+			break
+		fi
+		sleep 1
+		TNOW=$(( TNOW + 1 ))
+		if [ "$TNOW" == "$TOUT" ]; then
+				kill $RUN_PID
+				sleep 1
+				kill -9 $RUN_PID 2>/dev/null
+				CMD_RETURN=1
+				rm -f $HYBRID_CLOUD_LOCK_FILE
+				break
+		fi
+	done
+	return $CMD_RETURN
+}
+
+
+# returns the instance name by its mac address
+function get_instance_name_by_mac() {
+	local VMAC=$1
+	INSTANCE_CONF=`grep -ir $VMAC $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/hybrid-cloud/etc/instances/ | cut -d':' -f1`
+	if [ -f "$INSTANCE_CONF" ]; then
+		. $INSTANCE_CONF
+		echo $INSTANCE_NAME
+	fi
+
+}

@@ -1,0 +1,47 @@
+#!/bin/bash
+# this is the functions file for the dns-plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+# where is the init script ?
+if [ -f /etc/debian_version ]; then
+	DNS_INIT="/etc/init.d/bind9"
+elif [ -f /etc/redhat-release ]; then
+	DNS_INIT="/etc/init.d/named"
+elif [ -f /etc/SuSE-release ]; then
+	DNS_INIT="/etc/init.d/named"
+fi
+# source the config to get the domain name for the openQRM-network
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/openqrm-plugin-dns.conf
+export OPENQRM_SERVER_DOMAIN
+# the location of the tempaltes and db files
+DNS_NAMED_LOCAL_TEMPLATE="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/templates/openqrm-plugin-dns-named-local.template"
+DNS_INDB_TEMPLATE="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/templates/openqrm-plugin-dns-indb.template"
+DNS_REVDB_TEMPLATE="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/templates/openqrm-plugin-dns-revdb.template"
+DNS_INDB="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/bind/zones/$OPENQRM_SERVER_DOMAIN.in.db"
+DNS_REVDB="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/bind/zones/$OPENQRM_SERVER_DOMAIN.rev.db"
+
+
+# logs for dns
+function dns_log() {
+	local COMPONENT=$1
+	shift
+	local MESSAGE=$@
+	logger -i -t "dns plug-in" "$COMPONENT : $MESSAGE"
+}
+
+
+
+

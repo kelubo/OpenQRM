@@ -1,0 +1,656 @@
+<?xml version ='1.0' encoding ='UTF-8' ?>
+<definitions name='Cloud'
+  targetNamespace='http://@@OPENQRM_SERVER_IP_ADDRESS@@/openqrm/boot-service/clouduser.wdsl'
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"	
+  xmlns:tns='http://@@OPENQRM_SERVER_IP_ADDRESS@@/openqrm/boot-service/clouduser.wdsl'
+  xmlns:soap='http://schemas.xmlsoap.org/wsdl/soap/'
+  xmlns='http://schemas.xmlsoap.org/wsdl/'>
+
+<types>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+</xsd:schema>
+</types>
+
+<message name='CloudProvisionRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudProvisionResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudDeProvisionRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudDeProvisionResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudUserGetDetailsRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudUserGetDetailsResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudUserSetDetailsRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudUserSetDetailsResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudUserSetPasswordRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudUserSetPasswordResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudUserGetCCUsRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudUserGetCCUsResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudUserGetLimitsRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudUserGetLimitsResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudUserGetTransactionsRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudUserGetTransactionsResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudRequestGetListRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudRequestGetListResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudRequestGetDetailsRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudRequestGetDetailsResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudRequestExtendRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudRequestExtendResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudRequestUpdateRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudRequestUpdateResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudRequestGetCostRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudRequestGetCostResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudApplianceGetListRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudApplianceGetListResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudApplianceGetDetailsRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudApplianceGetDetailsResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudApplianceCommandRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudApplianceCommandResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudApplianceCommentRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudApplianceCommentResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudApplianceResizeRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudApplianceResizeResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='CloudAppliancePrivateRequest'>
+  <part name='symbol' type='xsd:string'/>
+</message>
+<message name='CloudAppliancePrivateResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='KernelGetListRequest'>
+  <part name='Result' type='xsd:string'/>
+</message>
+<message name='KernelGetListResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='ImageGetListRequest'>
+  <part name='Result' type='xsd:string'/>
+</message>
+<message name='ImageGetListResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='VirtualizationGetListRequest'>
+  <part name='Result' type='xsd:string'/>
+</message>
+<message name='VirtualizationGetListResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='PuppetGetListRequest'>
+  <part name='Result' type='xsd:string'/>
+</message>
+<message name='PuppetGetListResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='ProductGetListRequest'>
+  <part name='Result' type='xsd:string'/>
+</message>
+<message name='ProductGetListResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='ProductGetDetailsRequest'>
+  <part name='Result' type='xsd:string'/>
+</message>
+<message name='ProductGetDetailsResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<message name='GetIpSelectPerUserRequest'>
+  <part name='Result' type='xsd:string'/>
+</message>
+<message name='GetIpSelectPerUserResponse'>
+  <part name='Result' type='xsd:string'/>
+</message>
+
+<portType name='CloudPortType'>
+
+  <operation name='CloudProvision'>
+    <input message='tns:CloudProvisionRequest'/>
+    <output message='tns:CloudProvisionResponse'/>
+  </operation>
+
+  <operation name='CloudDeProvision'>
+    <input message='tns:CloudDeProvisionRequest'/>
+    <output message='tns:CloudDeProvisionResponse'/>
+  </operation>
+
+  <operation name='CloudUserGetDetails'>
+    <input message='tns:CloudUserGetDetailsRequest'/>
+    <output message='tns:CloudUserGetDetailsResponse'/>
+  </operation>
+
+  <operation name='CloudUserSetDetails'>
+    <input message='tns:CloudUserSetDetailsRequest'/>
+    <output message='tns:CloudUserSetDetailsResponse'/>
+  </operation>
+
+  <operation name='CloudUserSetPassword'>
+    <input message='tns:CloudUserSetPasswordRequest'/>
+    <output message='tns:CloudUserSetPasswordResponse'/>
+  </operation>
+
+  <operation name='CloudUserGetCCUs'>
+    <input message='tns:CloudUserGetCCUsRequest'/>
+    <output message='tns:CloudUserGetCCUsResponse'/>
+  </operation>
+
+  <operation name='CloudUserGetLimits'>
+    <input message='tns:CloudUserGetLimitsRequest'/>
+    <output message='tns:CloudUserGetLimitsResponse'/>
+  </operation>
+
+  <operation name='CloudUserGetTransactions'>
+    <input message='tns:CloudUserGetTransactionsRequest'/>
+    <output message='tns:CloudUserGetTransactionsResponse'/>
+  </operation>
+
+  <operation name='CloudRequestGetList'>
+    <input message='tns:CloudRequestGetListRequest'/>
+    <output message='tns:CloudRequestGetListResponse'/>
+  </operation>
+
+  <operation name='CloudRequestGetDetails'>
+    <input message='tns:CloudRequestGetDetailsRequest'/>
+    <output message='tns:CloudRequestGetDetailsResponse'/>
+  </operation>
+
+  <operation name='CloudRequestExtend'>
+    <input message='tns:CloudRequestExtendRequest'/>
+    <output message='tns:CloudRequestExtendResponse'/>
+  </operation>
+
+  <operation name='CloudRequestUpdate'>
+    <input message='tns:CloudRequestUpdateRequest'/>
+    <output message='tns:CloudRequestUpdateResponse'/>
+  </operation>
+
+  <operation name='CloudRequestGetCost'>
+    <input message='tns:CloudRequestGetCostRequest'/>
+    <output message='tns:CloudRequestGetCostResponse'/>
+  </operation>
+
+  <operation name='CloudApplianceGetList'>
+    <input message='tns:CloudApplianceGetListRequest'/>
+    <output message='tns:CloudApplianceGetListResponse'/>
+  </operation>
+
+  <operation name='CloudApplianceGetDetails'>
+    <input message='tns:CloudApplianceGetDetailsRequest'/>
+    <output message='tns:CloudApplianceGetDetailsResponse'/>
+  </operation>
+
+  <operation name='CloudApplianceCommand'>
+    <input message='tns:CloudApplianceCommandRequest'/>
+    <output message='tns:CloudApplianceCommandResponse'/>
+  </operation>
+
+  <operation name='CloudApplianceComment'>
+    <input message='tns:CloudApplianceCommentRequest'/>
+    <output message='tns:CloudApplianceCommentResponse'/>
+  </operation>
+
+  <operation name='CloudApplianceResize'>
+    <input message='tns:CloudApplianceResizeRequest'/>
+    <output message='tns:CloudApplianceResizeResponse'/>
+  </operation>
+
+  <operation name='CloudAppliancePrivate'>
+    <input message='tns:CloudAppliancePrivateRequest'/>
+    <output message='tns:CloudAppliancePrivateResponse'/>
+  </operation>
+
+  <operation name='KernelGetList'>
+    <input message='tns:KernelGetListRequest'/>
+    <output message='tns:KernelGetListResponse'/>
+  </operation>
+
+  <operation name='ImageGetList'>
+    <input message='tns:ImageGetListRequest'/>
+    <output message='tns:ImageGetListResponse'/>
+  </operation>
+
+  <operation name='VirtualizationGetList'>
+    <input message='tns:VirtualizationGetListRequest'/>
+    <output message='tns:VirtualizationGetListResponse'/>
+  </operation>
+
+  <operation name='PuppetGetList'>
+    <input message='tns:PuppetGetListRequest'/>
+    <output message='tns:PuppetGetListResponse'/>
+  </operation>
+
+  <operation name='ProductGetList'>
+    <input message='tns:ProductGetListRequest'/>
+    <output message='tns:ProductGetListResponse'/>
+  </operation>
+
+  <operation name='ProductGetDetails'>
+    <input message='tns:ProductGetDetailsRequest'/>
+    <output message='tns:ProductGetDetailsResponse'/>
+  </operation>
+
+  <operation name='GetIpSelectPerUser'>
+    <input message='tns:GetIpSelectPerUserRequest'/>
+    <output message='tns:GetIpSelectPerUserResponse'/>
+  </operation>
+
+</portType>
+
+
+
+
+<binding name='CloudBinding' type='tns:CloudPortType'>
+  <soap:binding style='rpc'
+    transport='http://schemas.xmlsoap.org/soap/http'/>
+
+  <operation name='CloudProvision'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudProvision'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudDeProvision'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudDeProvision'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudUserGetDetails'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudUserGetDetails'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudUserSetDetails'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudUserSetDetails'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudUserSetPassword'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudUserSetPassword'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudUserGetCCUs'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudUserGetCCUs'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudUserGetLimits'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudUserGetLimits'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudUserGetTransactions'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudUserGetTransactions'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudRequestGetList'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudRequestGetList'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudRequestGetDetails'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudRequestGetDetails'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudRequestExtend'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudRequestExtend'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudRequestUpdate'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudRequestUpdate'/>
+    <input>
+      <soap:body use='encoded' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='encoded' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudRequestGetCost'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudRequestGetCost'/>
+    <input>
+      <soap:body use='encoded' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='encoded' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudApplianceGetList'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudApplianceGetList'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudApplianceGetDetails'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudApplianceGetDetails'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudApplianceCommand'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudApplianceCommand'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudApplianceComment'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudApplianceComment'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudApplianceResize'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudApplianceResize'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='CloudAppliancePrivate'>
+    <soap:operation soapAction='urn:localhost-cloud#CloudAppliancePrivate'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='KernelGetList'>
+    <soap:operation soapAction='urn:localhost-cloud#KernelGetList'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='ImageGetList'>
+    <soap:operation soapAction='urn:localhost-cloud#ImageGetList'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='VirtualizationGetList'>
+    <soap:operation soapAction='urn:localhost-cloud#VirtualizationGetList'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='PuppetGetList'>
+    <soap:operation soapAction='urn:localhost-cloud#PuppetGetList'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='ProductGetList'>
+    <soap:operation soapAction='urn:localhost-cloud#ProductGetList'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='ProductGetDetails'>
+    <soap:operation soapAction='urn:localhost-cloud#ProductGetDetails'/>
+    <input>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='literal' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+  <operation name='GetIpSelectPerUser'>
+    <soap:operation soapAction='urn:localhost-cloud#GetIpSelectPerUser'/>
+    <input>
+      <soap:body use='encoded' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </input>
+    <output>
+      <soap:body use='encoded' namespace='urn:localhost-cloud'
+        encodingStyle='http://schemas.xmlsoap.org/soap/encoding/'/>
+    </output>
+  </operation>
+
+</binding>
+
+<service name='CloudService'>
+  <port name='CloudPort' binding='tns:CloudBinding'>
+    <soap:address location='http://@@OPENQRM_SERVER_IP_ADDRESS@@/cloud-portal/user/soap/clouduser-soap.php'/>
+  </port>
+</service>
+</definitions>

@@ -1,0 +1,70 @@
+#!/bin/bash
+# this is the functions file for the image-shelf-plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+################ common image-shelf functions
+
+# logs for image-shelf
+function image_shelf_log() {
+	local COMPONENT=$1
+	shift
+	local MESSAGE=$@
+	logger -i -t "image-shelf plug-in" "$COMPONENT : $MESSAGE"
+}
+
+
+
+################ image-shelf functions
+
+
+function image_shelf_set_resolv_conf() {
+	local image_path=$1
+	if [ "$image_path" == "" ]; then
+		exit 1
+	fi
+	if [ ! -d "$image_path" ]; then
+		exit 1
+	fi
+	# backup orig
+	if [ ! -f $image_path/etc/resolv.conf.image-shelf.bak ]; then
+		cp -f $image_path/etc/resolv.conf $image_path/etc/resolv.conf.image-shelf.bak
+	fi
+	# try different options to find out the right nameservers and domain-name
+	# dhcpd plugin
+	if [ -f "$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/etc/dhcpd.conf" ]; then
+		DOMAIN_NAME=`grep domain-name $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/etc/dhcpd.conf | grep -v domain-name-servers | awk {' print $3 '} | cut -d'"' -f2`
+		NAME_SERVER=`grep domain-name-servers $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/etc/dhcpd.conf | head -n1 | awk {' print $3 '} | sed -e "s/;//g"`
+		echo "domain $DOMAIN_NAME" > $image_path/etc/resolv.conf
+		echo "search $DOMAIN_NAME" >> $image_path/etc/resolv.conf
+		echo "nameserver $NAME_SERVER" >> $image_path/etc/resolv.conf
+		return 1
+	fi
+	# dns plugin
+	if [ -f "$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/openqrm-plugin-dns.conf" ]; then
+		. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dns/etc/openqrm-plugin-dns.conf
+		echo "domain $OPENQRM_SERVER_DOMAIN" > $image_path/etc/resolv.conf
+		echo "search $OPENQRM_SERVER_DOMAIN" >> $image_path/etc/resolv.conf
+		echo "nameserver $OPENQRM_SERVER_IP_ADDRESS" >> $image_path/etc/resolv.conf
+		return 2
+	fi
+
+	# else copy openqrm-severs /etc/resolv.conf
+	cp -f /etc/resolv.conf $image_path/etc/resolv.conf
+	return 3
+
+}
+
+
+

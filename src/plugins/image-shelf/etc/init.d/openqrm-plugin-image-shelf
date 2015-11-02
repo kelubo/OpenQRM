@@ -1,0 +1,125 @@
+#!/bin/bash
+# init script for the openQRM image-shelf-plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+OPENQRM_SERVER_BASE_DIR=$(pushd $(dirname $0)/../../../../.. > /dev/null; echo $PWD; popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/include/openqrm-plugin-image-shelf-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/etc/openqrm-plugin-image-shelf.conf
+# get the ip config
+openqrm_server_get_config
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+export LANG=C
+# define wget to use with https
+if [ "$OPENQRM_WEB_PROTOCOL" == "https" ]; then
+	WGET_NO_CERT_CHECK="--no-check-certificate"
+fi
+
+function openqrm_plugin_image_shelf_start() {
+	echo "Starting the openQRM image-shelf-plugin"
+	touch $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/image-shelf/.running
+}
+
+
+function openqrm_plugin_image_shelf_stop() {
+	echo "Stopping the openQRM image-shelf-plugin"
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/image-shelf/.running
+}
+
+function openqrm_plugin_image_shelf_uninstall() {
+	local USERNAME=$1
+	local PASSWORD=$2
+	if [ "$USERNAME" == "" ] && [ "$PASSWORD" == "" ]; then
+		echo -n "image-shelf: Please give a username to uninstall the plugin : "
+		read USERNAME
+		echo
+		echo -n "image-shelf: Please give the password for user $USERNAME : "
+		read PASSWORD
+		echo
+	fi
+	echo "Uninstalling the openQRM image-shelf-plugin"
+	openqrm_plugin_image_shelf_stop
+
+	# removing the table
+	if ! wget -q $WGET_NO_CERT_CHECK -O /dev/null --http-user=$USERNAME --http-password=$PASSWORD "$OPENQRM_WEB_PROTOCOL://$resource_openqrmserver/openqrm/base/plugins/image-shelf/image-shelf-action.php?image_shelf_command=uninstall"; then
+		image_shelf_log init "ERROR: Could not drop the image-shelf-plugin tables in the database!"
+		exit 1
+	fi
+
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/image-shelf
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/boot-service-image-shelf.tgz
+
+
+}
+
+function openqrm_plugin_image_shelf_init() {
+	local USERNAME=$1
+	local PASSWORD=$2
+	if [ "$USERNAME" == "" ] && [ "$PASSWORD" == "" ]; then
+		echo -n "image-shelf: Please give a username to init the plugin : "
+		read USERNAME
+		echo
+		echo -n "image-shelf: Please give the password for user $USERNAME : "
+		read PASSWORD
+		echo
+	fi
+	echo "Initializing the openQRM image-shelf-plugin"
+	# linking the web dir
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/image-shelf
+	# link the boot-service
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/image-shelf/web/boot-service-image-shelf.tgz $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/boot-service-image-shelf.tgz
+
+	# creating the table
+	if ! wget -q $WGET_NO_CERT_CHECK -O /dev/null --http-user=$USERNAME --http-password=$PASSWORD "$OPENQRM_WEB_PROTOCOL://$resource_openqrmserver/openqrm/base/plugins/image-shelf/image-shelf-action.php?image_shelf_command=init"; then
+		image_shelf_log init "ERROR: Could not create the image-shelf-plugin tables in the database!"
+		exit 1
+	fi
+
+}
+
+USER=$2
+PASS=$3
+
+case "$1" in
+	start)
+		openqrm_plugin_image_shelf_start
+		;;
+	stop)
+		openqrm_plugin_image_shelf_stop
+		;;
+	restart)
+		openqrm_plugin_image_shelf_stop
+		sleep 1
+		openqrm_plugin_image_shelf_start
+		;;
+	init)
+		openqrm_plugin_image_shelf_init $USER $PASS
+		;;
+	uninstall)
+		openqrm_plugin_image_shelf_uninstall $USER $PASS
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|init|uninstall}"
+		exit 1
+
+esac
+exit $?
+
+
+
+

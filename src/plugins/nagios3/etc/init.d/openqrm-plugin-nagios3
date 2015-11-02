@@ -1,0 +1,281 @@
+#!/bin/bash
+# init script for the openQRM nagios3 plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+OPENQRM_SERVER_BASE_DIR=$(pushd $(dirname $0)/../../../../.. > /dev/null; echo $PWD; popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/include/openqrm-plugin-nagios3-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/etc/openqrm-plugin-nagios3.conf
+# get the ip config
+openqrm_server_get_config
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+export LANG=C
+# define wget to use with https
+if [ "$OPENQRM_WEB_PROTOCOL" == "https" ]; then
+	WGET_NO_CERT_CHECK="--no-check-certificate"
+fi
+
+
+HTPASSWD="htpasswd"
+if [ -f /etc/SuSE-release ]; then
+	HTPASSWD="htpasswd2"
+fi
+
+function openqrm_plugin_nagios3_start() {
+	echo "Starting the openQRM nagios3-plugin"
+	# for debian/ubuntu we starting also ndoutils
+	if [ -f /etc/debian_version ]; then
+		if [ -x "/etc/init.d/ndoutils" ]; then
+			if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
+				invoke-rc.d ndoutils start
+			else
+				/etc/init.d/ndoutils start
+			fi
+		fi
+	fi
+
+	if [ -x "/etc/init.d/nagios3" ]; then
+		if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
+			invoke-rc.d nagios3 start
+		else
+			/etc/init.d/nagios3 start
+		fi
+	elif [ -x /etc/init.d/nagios ]; then
+		if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
+			invoke-rc.d nagios start
+		else
+			/etc/init.d/nagios start
+		fi
+	else
+		openqrm_post_event 0 "openqrm_plugin_nagios3_start" 3 "openqrm-plugin-nagios3" "Could not start Nagios. Init script not found !."
+		exit 1
+	fi
+	touch $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/nagios3/.running
+	return 0
+}
+
+
+function openqrm_plugin_nagios3_stop() {
+	echo "Stopping the openQRM nagios3-plugin"
+	# for debian/ubuntu we stopping also ndoutils
+	if [ -f /etc/debian_version ]; then
+		if [ -x "/etc/init.d/ndoutils" ]; then
+			if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
+				invoke-rc.d ndoutils stop
+			else
+				/etc/init.d/ndoutils stop
+			fi
+		fi
+	fi
+
+	if [ -x "/etc/init.d/nagios3" ]; then
+		if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
+			invoke-rc.d nagios3 stop
+		else
+			/etc/init.d/nagios3 stop
+		fi
+	elif [ -x /etc/init.d/nagios ]; then
+		if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
+			invoke-rc.d nagios stop
+		else
+			/etc/init.d/nagios stop
+		fi
+	else
+		openqrm_post_event 0 "openqrm_plugin_nagios3_stop" 3 "openqrm-plugin-nagios3" "Could not stop Nagios. Init script not found !."
+		exit 1
+	fi
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/nagios3/.running
+	return 0
+}
+
+
+function openqrm_plugin_nagios3_init() {
+	local USERNAME=$1
+	local PASSWORD=$2
+	if [ "$USERNAME" == "" ] && [ "$PASSWORD" == "" ]; then
+		echo -n "nagios3: Please give a username to init the plugin : "
+		read USERNAME
+		echo
+		echo -n "nagios3: Please give the password for user $USERNAME : "
+		read PASSWORD
+		echo
+	fi
+
+	echo "Initializing the openQRM nagios3-plugin"
+
+	if [ -f /etc/redhat-release ]; then
+		# make sure extra conf dir exist
+		if [ ! -d $NAGIOS_ETC_DIRECTORY/conf.d ]; then
+			mkdir -p $NAGIOS_ETC_DIRECTORY/conf.d
+		fi
+		if ! grep ^cfg_dir $NAGIOS_ETC_DIRECTORY/nagios.cfg | grep "conf.d"; then
+			echo "" >> $NAGIOS_ETC_DIRECTORY/nagios.cfg
+			echo "# added by openQRM" >> $NAGIOS_ETC_DIRECTORY/nagios.cfg
+			echo "cfg_dir=$NAGIOS_ETC_DIRECTORY/conf.d" >> $NAGIOS_ETC_DIRECTORY/nagios.cfg
+		fi
+
+		# on centos we have to check that check_dig + check_mysql are defined
+		# check_dig
+		if ! grep -r check_dig $NAGIOS_ETC_DIRECTORY/* 1>/dev/null; then
+			echo "-> Adding check_dig Nagios definition ..."
+			cp -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/etc/templates/openqrm_check_dig.centos.template $NAGIOS_ETC_DIRECTORY/conf.d/openqrm_check_dig.cfg
+		fi
+		# check_myslq
+		if ! grep -r check_mysql $NAGIOS_ETC_DIRECTORY/* 1>/dev/null; then
+			echo "-> Adding check_mysql Nagios definition ..."
+			cp -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/etc/templates/openqrm_check_mysql.centos.template $NAGIOS_ETC_DIRECTORY/conf.d/openqrm_check_mysql.cfg
+		fi
+		# adapt menu.txt (/nagios3/ to /nagios/)
+		cp -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/web/menu.centos.txt $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/web/menu.txt
+	fi
+
+	# linking the web dir
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/web $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/nagios3
+	# link the boot-service
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/web/boot-service-nagios3.tgz $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/boot-service-nagios3.tgz
+	# Nagios Single-Sign-On
+	if [ -f $NAGIOS_ETC_DIRECTORY/htpasswd.users ]; then
+		# debian/ubuntu
+		if [ ! -h $NAGIOS_ETC_DIRECTORY/htpasswd.users ]; then
+			cp -f $NAGIOS_ETC_DIRECTORY/htpasswd.users $NAGIOS_ETC_DIRECTORY/htpasswd.users.bkp
+		fi
+		rm -f $NAGIOS_ETC_DIRECTORY/htpasswd.users
+		# link openqrm .htaccess to nagios
+		ln -s $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/.htpasswd $NAGIOS_ETC_DIRECTORY/htpasswd.users
+	elif [ -f $NAGIOS_ETC_DIRECTORY/passwd ]; then
+		# rh/centos
+		if [ ! -h $NAGIOS_ETC_DIRECTORY/passwd ]; then
+			cp -f $NAGIOS_ETC_DIRECTORY/passwd $NAGIOS_ETC_DIRECTORY/passwd.bkp
+		fi
+		rm -f $NAGIOS_ETC_DIRECTORY/passwd
+		# link openqrm .htaccess to nagios
+		ln -s $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/.htpasswd $NAGIOS_ETC_DIRECTORY/passwd
+	else
+		nagios3_log init "ERROR: Could not find password file for Nagios! Skipping single-sign on"
+	fi
+	# First backup original nagios cgi.cfg
+	if [ ! -f $NAGIOS_ETC_DIRECTORY/cgi.cfg.bkp ]; then
+		cp -f $NAGIOS_ETC_DIRECTORY/cgi.cfg $NAGIOS_ETC_DIRECTORY/cgi.cfg.bkp
+	fi
+	# change nagiosadmin 2 openqrm for accessing nagios-gui
+	sed -i -e 's/nagiosadmin/openqrm/' $NAGIOS_ETC_DIRECTORY/cgi.cfg
+	# First backup original config.js
+	if [ ! -f /usr/share/nagios3/htdocs/config.js.bkp ]; then
+		cp -f /usr/share/nagios3/htdocs/config.js /usr/share/nagios3/htdocs/config.js.bkp
+	fi
+	# Fix WebGUI for Debian
+	sed -i "s/nagios\/cgi-bin/nagios3\/cgi-bin/g"  /usr/share/nagios3/htdocs/config.js
+
+	# adapt the basic-auth name from openQRM (ubuntu/debian apache config)
+	if [ -f $NAGIOS_ETC_DIRECTORY/apache2.conf ]; then
+		if [ ! -f $NAGIOS_ETC_DIRECTORY/apache2.conf.bkp ]; then
+			cp -f $NAGIOS_ETC_DIRECTORY/apache2.conf $NAGIOS_ETC_DIRECTORY/apache2.conf.bkp
+		fi
+		sed -i -e 's#AuthName.*#AuthName "openQRM-Server Login"#' $NAGIOS_ETC_DIRECTORY/apache2.conf
+		$OPENQRM_WEBSERVER_INIT reload
+	fi
+	# adapt the basic-auth name from openQRM (centos apache config)
+	if [ -f /etc/httpd/conf.d/nagios.conf ]; then
+		if [ ! -f /etc/httpd/conf.d/nagios.conf.bkp ]; then
+			cp -f /etc/httpd/conf.d/nagios.conf /etc/httpd/conf.d/nagios.conf.bkp
+		fi
+		sed -i -e 's#AuthName.*#AuthName "openQRM-Server Login"#' /etc/httpd/conf.d/nagios.conf
+		$OPENQRM_WEBSERVER_INIT reload
+	fi
+	sleep 2
+	# creating the table
+	if ! wget -q $WGET_NO_CERT_CHECK -O /dev/null --http-user=$USERNAME --http-password=$PASSWORD "$OPENQRM_WEB_PROTOCOL://$resource_openqrmserver/openqrm/base/plugins/nagios3/nagios3-action.php?nagios3_command=init"; then
+		nagios3_log init "ERROR: Could not create the nagios3-plugin tables in the database!"
+		return 1
+	fi
+
+	return 0
+}
+
+
+function openqrm_plugin_nagios3_uninstall() {
+	local USERNAME=$1
+	local PASSWORD=$2
+	if [ "$USERNAME" == "" ] && [ "$PASSWORD" == "" ]; then
+		echo -n "nagios3: Please give a username to init the plugin : "
+		read USERNAME
+		echo
+		echo -n "nagios3: Please give the password for user $USERNAME : "
+		read PASSWORD
+		echo
+	fi
+	echo "Uninstalling the openQRM nagios3-plugin"
+	openqrm_plugin_nagios3_stop
+
+	# drop the table
+	if ! wget -q $WGET_NO_CERT_CHECK -O /dev/null --http-user=$USERNAME --http-password=$PASSWORD "$OPENQRM_WEB_PROTOCOL://$resource_openqrmserver/openqrm/base/plugins/nagios3/nagios3-action.php?nagios3_command=uninstall"; then
+		nagios3_log init "ERROR: Could not drop the nagios3-plugin tables in the database!"
+		return 1
+	fi
+	# unlinking the web dir
+	rm -rf $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/nagios3
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/boot-service/boot-service-nagios3.tgz
+	# restore old nagios htpasswd
+	if [ -f $NAGIOS_ETC_DIRECTORY/htpasswd.users ]; then
+		rm -f $NAGIOS_ETC_DIRECTORY/htpasswd.users
+		cp -f $NAGIOS_ETC_DIRECTORY/htpasswd.users.bkp $NAGIOS_ETC_DIRECTORY/htpasswd.users
+	elif [ -f $NAGIOS_ETC_DIRECTORY/passwd ]; then
+		rm -f $NAGIOS_ETC_DIRECTORY/passwd
+		cp -f $NAGIOS_ETC_DIRECTORY/passwd.bkp $NAGIOS_ETC_DIRECTORY/passwd
+	else
+		nagios3_log uninstall "ERROR: Could not find password file for Nagios! Skipping single-sign on"
+	fi
+	# restore old nagios config.js
+	if [ -f /usr/share/nagios3/htdocs/config.js.bkp ]; then
+		cp -f /usr/share/nagios3/htdocs/config.js.bkp /usr/share/nagios3/htdocs/config.js
+	fi
+	# restore old nagios cgi.cfg
+	cp -f $NAGIOS_ETC_DIRECTORY/cgi.cfg.bkp $NAGIOS_ETC_DIRECTORY/cgi.cfg
+	cp -f $NAGIOS_ETC_DIRECTORY/apache2.conf.bkp $NAGIOS_ETC_DIRECTORY/apache2.conf
+	return 0
+}
+
+
+USER=$2
+PASS=$3
+
+case "$1" in
+	start)
+		openqrm_plugin_nagios3_start
+		;;
+	stop)
+		openqrm_plugin_nagios3_stop
+		;;
+	restart)
+		openqrm_plugin_nagios3_stop
+		sleep 1
+		openqrm_plugin_nagios3_start
+		;;
+	init)
+		openqrm_plugin_nagios3_init $USER $PASS
+		;;
+	uninstall)
+		openqrm_plugin_nagios3_uninstall $USER $PASS
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|init|uninstall}"
+		exit 1
+
+esac
+exit $?
+
+

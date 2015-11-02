@@ -1,0 +1,42 @@
+#!/usr/bin/python
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+import sys
+from oqlibcloudcompute import *
+
+def main(argv):
+	AMI_FILTER = None
+	cmdline = openqrm_lc_parse_cmdline(argv)
+	if cmdline['FILTER'] != '':
+		AMI_FILTER = cmdline['FILTER'].replace("name=", "")
+	conn = openqrm_lc_get_connection(cmdline)
+	images = conn.list_images()
+	for item in images:
+		if "-ramdisk" in item.name:
+			continue
+		if "-kernel" in item.name:
+			continue
+		if AMI_FILTER != None:
+			if item.name[0] == AMI_FILTER[0]:
+				print "IMAGE %s %s" % (item.name, item.id)
+		else:
+			print "IMAGE %s %s" % (item.name, item.id)
+
+
+if __name__ == "__main__":
+	main(sys.argv[1:])
+
+
+

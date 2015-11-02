@@ -1,0 +1,115 @@
+#!/bin/bash
+# init script for the openQRM tftpd-plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+OPENQRM_SERVER_BASE_DIR=$(pushd $(dirname $0)/../../../../.. > /dev/null; echo $PWD; popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/tftpd/include/openqrm-plugin-tftpd-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/tftpd/etc/openqrm-plugin-tftpd.conf
+
+function openqrm_plugin_tftpd_start() {
+	echo "Starting the openQRM tftpd-plugin"
+	openqrm_plugin_tftpd_stop 1>/dev/null 2>&1
+	# check pmtu
+	openqrm_plugin_tftpd_update_pmtu
+
+	# start tftp service
+	/usr/sbin/in.tftpd -l -4 -s $OPENQRM_SERVER_BASE_DIR/openqrm/tftpboot/
+	touch $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/tftpd/.running
+}
+
+
+function openqrm_plugin_tftpd_stop() {
+	echo "Stopping the openQRM tftpd-plugin"
+	killall in.tftpd 1>/dev/null 2>&1
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/tftpd/.running
+}
+
+function openqrm_plugin_tftpd_uninstall() {
+	echo "Uninstalling the openQRM tftpd-plugin"
+	openqrm_plugin_tftpd_stop
+	rm -f $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/tftpd
+}
+
+function openqrm_plugin_tftpd_init() {
+	echo "Initializing the openQRM tftpd-plugin"
+	# make sure tftp is not running already
+	if [ -f /etc/debian_version ]; then
+		if [ -x "/etc/init.d/tftpd-hpa" ]; then
+			if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
+				invoke-rc.d tftpd-hpa stop
+			else
+				/etc/init.d/tftpd-hpa stop
+			fi
+		fi
+		# empty config to avoid start at init
+		if [ -f /etc/default/tftpd-hpa ]; then
+			mv -f /etc/default/tftpd-hpa /etc/default/tftpd-hpa.disabled
+		fi
+		update-rc.d -f tftpd-hpa remove
+		# inetd ?
+		if [ -f /etc/inetd.conf ]; then
+			sed -i -e "s/^tftp/#tftp/g" /etc/inetd.conf
+			INETDPID=`ps ax | grep inetd | grep -v grep | awk {' print $1 '}`
+			kill -HUP $INETDPID 1>/dev/null 2>&1
+		fi
+	fi
+	if [ -f /etc/xinetd.d/tftp ]; then
+		sed -i -e "s/disable.*/disable = yes/" /etc/xinetd.d/tftp
+		sed -i -e "s/Disable.*/Disable = yes/" /etc/xinetd.d/tftp
+		if [ -x "/etc/init.d/xinetd" ]; then
+			if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
+				invoke-rc.d xinetd restart
+			else
+				/etc/init.d/xinetd restart
+			fi
+		fi
+	fi
+	# linking the web dir
+	ln -sf $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/tftpd/web $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/tftpd
+}
+
+
+case "$1" in
+	start)
+		openqrm_plugin_tftpd_start
+		;;
+	stop)
+		openqrm_plugin_tftpd_stop
+		;;
+	restart)
+		openqrm_plugin_tftpd_stop
+		sleep 1
+		openqrm_plugin_tftpd_start
+		;;
+	init)
+		openqrm_plugin_tftpd_init
+		;;
+	uninstall)
+		openqrm_plugin_tftpd_uninstall
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|init|uninstall}"
+		exit 1
+
+esac
+exit $?
+
+
+
+

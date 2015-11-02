@@ -1,0 +1,39 @@
+.htmlobject_th.action_buttons
+.htmlobject_td.action_buttons {
+	text-align:left;
+}
+
+
+a.edit.current {
+	opacity: 0.8;
+}
+
+/* Region */
+.custom_tab{
+	margin: 0 0 0 10px;
+	float:left;
+}
+.custom_tab .submit{
+float: right;
+}
+.custom_tab .region{
+float: right;
+}
+.custom_tab select{
+height: 25px;
+line-height: 25px;
+}
+
+#amifilter.htmlobject_box .left {
+	float: left;
+	width: auto;
+	margin: 0 10px 0 0;
+	padding: 0;
+}
+
+#form.account .htmlobject_box .left {
+	float: left;
+	width: 180px;
+	margin: 0;
+	padding: 0;
+}

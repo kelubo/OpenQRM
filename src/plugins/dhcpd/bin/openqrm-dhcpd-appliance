@@ -1,0 +1,149 @@
+#!/bin/bash
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+OPENQRM_SERVER_BASE_DIR=$(dirname $0)/../../../..
+OPENQRM_SERVER_BASE_DIR=$(pushd $OPENQRM_SERVER_BASE_DIR > /dev/null && echo $PWD && popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/include/openqrm-plugin-dhcpd-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+openqrm_server_get_config
+OPENQRM_SERVER_IP=$OPENQRM_SERVER_IP_ADDRESS
+resource_id=0
+resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+openqrm_web_protocol=$OPENQRM_WEB_PROTOCOL
+
+DHCPD_CONF="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/etc/dhcpd.conf"
+DHCPD_HOST_TEMPLATE="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/etc/templates/openqrm-plugin-dhcpd-host.template"
+
+# define wget to use with https
+if [ "$openqrm_web_protocol" == "https" ]; then
+	WGET_NO_CERT_CHECK="--no-check-certificate"
+fi
+
+function dhcpd_usage() {
+	echo "Usage: $0 add_hostname/remove_hostname -d [resource-id] -m [resource-mac] -n [resource-name]"
+	exit 1
+}
+
+DHCPD_COMMAND=$1
+shift
+
+while [ $# -ne 0 ]; do
+	case "$1" in
+		-d)
+			PARAM_RESOURCE_ID=$2
+			shift
+			;;
+		-m)
+			PARAM_RESOURCE_MAC=$2
+			shift
+			;;
+		-n)
+			PARAM_APPLIANCE_NAME=$2
+			shift
+			;;
+		--openqrm-ui-user)
+			OPENQRM_UI_USER=$2
+			shift
+			;;
+		--openqrm-internal-cmd)
+			OPENQRM_INTERNAL_CMD=$2
+			shift
+			;;
+		--openqrm-cmd-mode)
+			OPENQRM_CMD_MODE=$2
+			shift
+			;;
+		*)
+			openqrm_unblock_starting_queue $@
+			echo "ERROR: Free commandline arguments are not allowed"
+			dhcpd_usage
+			exit 6
+			;;
+	esac
+	shift
+done
+
+# checks
+if [ "$DHCPD_COMMAND" == "" ]; then
+	openqrm_unblock_starting_queue $@
+	dhcpd_usage
+fi
+
+HOSTNAME="resource$RESOURCE_ID"
+
+# main
+case "$DHCPD_COMMAND" in
+
+	add_hostname)
+		if [ "$PARAM_APPLIANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $@
+			dhcpd_usage
+		fi
+		if [ "$PARAM_RESOURCE_MAC" == "" ]; then
+			openqrm_unblock_starting_queue $@
+			dhcpd_usage
+		fi
+		LOCK_TIME=`openqrm_lock_queue aquire dhcpd`
+		trap "openqrm_lock_queue release dhcpd $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $@
+
+		cp -f $DHCPD_CONF $DHCPD_CONF.openqrm-dhcpd-appliance
+		sed -i -e "s/hardware ethernet $PARAM_RESOURCE_MAC;/hardware ethernet $PARAM_RESOURCE_MAC; option host-name \"$PARAM_APPLIANCE_NAME\";/g" $DHCPD_CONF
+		;;
+
+	remove_hostname)
+		if [ "$PARAM_APPLIANCE_NAME" == "" ]; then
+			openqrm_unblock_starting_queue $@
+			dhcpd_usage
+		fi
+		if [ "$PARAM_RESOURCE_MAC" == "" ]; then
+			openqrm_unblock_starting_queue $@
+			dhcpd_usage
+		fi
+
+		LOCK_TIME=`openqrm_lock_queue aquire dhcpd`
+		trap "openqrm_lock_queue release dhcpd $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $@
+
+		cp -f $DHCPD_CONF $DHCPD_CONF.openqrm-dhcpd-appliance
+		sed -i -e "s/option host-name \"$PARAM_APPLIANCE_NAME\";//g" $DHCPD_CONF
+		;;
+
+	*)
+		openqrm_unblock_starting_queue $@
+		dhcpd_usage
+		;;
+
+
+esac
+
+
+
+# is dhcpd running ? do we have to restart ?
+if [ -e $OPENQRM_WEBSERVER_DOCUMENT_ROOT/openqrm/base/plugins/dhcpd/.running ]; then
+        $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/etc/init.d/openqrm-plugin-dhcpd stop
+        if ! $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/etc/init.d/openqrm-plugin-dhcpd start; then
+                dhcpd_log openqrm-dhcpd-manager "Adding Resource  $HOSTNAME $RESOURCE_ID $RESOURCE_MAC $RESOURCE_IP failed. Reverting dhcpd-configuration."
+                # restore previous version, better not to add it than to corrupt the config
+                cp -f $DHCPD_CONF.openqrm-dhcpd-appliance $DHCPD_CONF
+                $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/dhcpd/etc/init.d/openqrm-plugin-dhcpd start
+        fi
+fi
+
+openqrm_lock_queue release dhcpd $LOCK_TIME
+trap '' EXIT

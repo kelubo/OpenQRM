@@ -1,0 +1,28 @@
+#carousel {
+	position: absolute;
+	top: 180px !important;
+	left: 440px !important;
+	width: 450px;
+	height: 240px;
+	background:none !important;
+}
+
+
+#openqrm_enterprise_footer {
+	position: absolute;
+	top: 560px !important;
+}
+
+#map {
+	position: absolute;
+	top: 30px;
+	left: 400px;
+	width: 450px;
+	height: 240px;
+}
+
+#carousel a {
+	color: #ffffff;
+}
+
+

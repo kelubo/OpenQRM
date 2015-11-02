@@ -1,0 +1,75 @@
+body {
+    font-family: "Trebuchet MS","Helvetica","Arial","Verdana","sans-serif";
+    font-size: 100%;
+    margin-bottom: 100px;
+}
+
+
+A:link {text-decoration: none; color: black;}
+A:visited {text-decoration: none; color: black;}
+A:active {text-decoration: none; color:	black;}
+A:hover {text-decoration: underline; color:	#78ab2c;}
+
+
+form input {
+	border: 1px solid #ccc;
+	padding: 7px;
+	width: 200px;
+	-webkit-appearance: none;
+}
+
+form input[type="submit"] {
+	background: #78ab2c;
+	margin: 20px 0 0 150px;
+}
+
+#logo, 
+#title,
+#login,
+#register {
+	width: 460px;
+	margin: 0 auto;
+}
+
+.errormsg {
+	color: red;
+	padding: 3px 0 8px 0;
+}
+.htmlobject_box {
+	margin: 0 0 5px 0;
+
+}
+.msgBox {
+	display: block;
+	text-align: center;
+	border: solid 1px #aaaaaa;
+	background-color: #FFFFE0;
+	color: black;
+	padding: 5px 15px;
+	z-index: 100;
+}
+
+#footer {
+	display: block;
+	position: fixed;
+	width: 99%;
+	height: 50px;
+	bottom: 0;
+	padding: 10px 0 0 0;
+	text-align: center;
+	border-top: 1px solid #CECECE;
+	background: #fff;
+}
+
+
+.htmlobject_tabs_box .left,
+.htmlobject_tabs_box .right {
+	display: block;
+	float: left;
+	width: 150px;
+}
+.htmlobject_tabs_box .right {
+	width: 300px;
+}
+
+

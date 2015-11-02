@@ -1,0 +1,26 @@
+#!/bin/bash
+# this is the functions file for the tftpd-plugin
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+
+function openqrm_plugin_tftpd_update_pmtu() {
+	#if pmtu is disabled we want to reenable it so tftp trasfer don't get stuck
+	#if the are mtu problems on the network.
+	pmtu_disable_status=$(cat /proc/sys/net/ipv4/ip_no_pmtu_disc)
+	if [ "$pmtu_disable_status" != "0" ] ; then
+		cat 0 > /proc/sys/net/ipv4/ip_no_pmtu_disc
+	fi
+}

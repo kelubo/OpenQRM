@@ -1,0 +1,50 @@
+#!/usr/bin/python
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+import sys
+from oqlibcloudloadbalancer import *
+
+def main(argv):
+	cmdline = openqrm_lc_parse_cmdline(argv)
+	if cmdline['LOADBALANCER_NAME'] == '':
+		print "Loadbalancer name empty"
+		sys.exit(1)
+	if cmdline['MEMBER_IP'] == '':
+		print "Member IP empty"
+		sys.exit(1)
+	if cmdline['MEMBER_PORT'] == '':
+		print "Member port empty"
+		sys.exit(1)
+	
+	member = Member(None, cmdline['MEMBER_IP'], cmdline['MEMBER_PORT'])
+	conn = openqrm_lc_get_connection(cmdline)
+	loadbalancers = conn.list_balancers()
+	found_balancer = False
+	for item in loadbalancers:
+		if item.name == cmdline['LOADBALANCER_NAME']:
+			found_balancer = True
+			if item.attach_member(member=member):
+				print "Added new member to loadbalancer %s" % (item.name)
+			else:
+				print "Error adding member to loadbalancer %s" % (item.name)
+	if not found_balancer:
+		print "Cloud not find loadbalancer %s" % (cmdline['LOADBALANCER_NAME'])
+
+
+if __name__ == "__main__":
+	main(sys.argv[1:])
+
+
+

@@ -1,0 +1,383 @@
+#!/bin/bash
+#
+# openQRM Enterprise developed by openQRM Enterprise GmbH.
+#
+# All source code and content (c) Copyright 2014, openQRM Enterprise GmbH unless specifically noted otherwise.
+#
+# This source code is released under the GNU General Public License version 2, unless otherwise agreed with openQRM Enterprise GmbH.
+# The latest version of this license can be found here: src/doc/LICENSE.txt
+#
+# By using this software, you acknowledge having read this license and agree to be bound thereby.
+#
+#           http://openqrm-enterprise.com
+#
+# Copyright 2014, openQRM Enterprise GmbH <info@openqrm-enterprise.com>
+#
+
+# add path when running from cron
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:$PATH
+OPENQRM_SERVER_BASE_DIR=$(dirname $0)/../../../..
+OPENQRM_SERVER_BASE_DIR=$(pushd $OPENQRM_SERVER_BASE_DIR > /dev/null && echo $PWD && popd > /dev/null)
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-functions
+# unblock starting command queue early for non-blocking + ui commands
+IDOIT_CHECK_CMD=$1
+if [ "$IDOIT_CHECK_CMD" == "map" ] || [ "$IDOIT_CHECK_CMD" == "event" ]; then
+	openqrm_unblock_starting_queue $@
+	NON_BLOCKING=true
+fi
+
+. $OPENQRM_SERVER_BASE_DIR/openqrm/etc/openqrm-server.conf
+. $OPENQRM_SERVER_BASE_DIR/openqrm/include/openqrm-server-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/include/openqrm-plugin-nagios3-functions
+. $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/etc/openqrm-plugin-nagios3.conf
+
+NAGIOS_CONF_DIR=$NAGIOS_ETC_DIRECTORY/conf.d
+NAGIOS_GENERATED_CONF="$NAGIOS_CONF_DIR/openqrm-network.cfg"
+NAGIOS_CHECK_CMD=$1
+SUBNETFILE="/tmp/subnet.xml"
+CURRENTDIR=`pwd`
+
+OPENQRM_APPLIANCE_HOST_TEMPLATE="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/etc/templates/openqrm_appliance_host.template"
+OPENQRM_APPLIANCE_SERVICE_TEMPLATE="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/etc/templates/openqrm_appliance_service.template"
+OPENQRM_APPLIANCE_DEFAULT_SERVICE_TEMPLATE="$OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/etc/templates/openqrm_appliance_default_service.template"
+export LANG=C
+# get the ip config
+openqrm_server_get_config
+export resource_openqrmserver=$OPENQRM_SERVER_IP_ADDRESS
+
+# functions
+
+function nagios_manager_usage() {
+	echo "Usage: $0 [map|update_nagios]"
+	echo "       $0 automap -t <on|off>"
+	echo "       $0 add -n <appliance-name> -i <resource-ip> -p <service-ports-as-comma-separated-list>"
+	echo "       $0 remove_service -n <appliance-name> -p <service-ports-as-comma-separated-list>"
+	echo "       $0 remove_host -n <appliance-name>"
+	echo "       $0 event -n <appliance-name> -s <service-in-error> -m <event-message>"
+	echo ""
+	echo "Optional parameters:"
+	echo "             [--openqrm-ui-user <username>]"
+	echo "             [--openqrm-internal-cmd <true/false>]"
+	echo "             [--openqrm-cmd-mode <regular/background/fork>]"
+}
+
+function reload_cron() {
+	if [ -x /etc/init.d/cron ]; then
+		/etc/init.d/cron reload
+	elif [ -x /etc/init.d/crond ]; then
+		/etc/init.d/crond reload
+	else
+		openqrm_post_event 0 "map" 3 "openqrm-nagios-manager" "Could not find cron init script in /etc/init.d/. Please reload cron manually!"
+		echo "ERROR: Could not find cron init script in /etc/init.d/. Please reload cron manually!" | logger
+	fi
+}
+
+function reload_nagios() {
+	# quick hack to support icinga
+	if [ "$NAGIOS3_ICINGA_CONF_DIRECTORY" != "" ]; then
+		if [ -x /etc/init.d/nagios3 ]; then
+			/etc/init.d/icinga reload
+		fi
+	fi
+	if [ -x /etc/init.d/nagios3 ]; then
+		/etc/init.d/nagios3 restart
+	elif [ -x /etc/init.d/nagios ]; then
+		/etc/init.d/nagios restart
+	else
+		openqrm_post_event 0 "map" 3 "openqrm-nagios-manager" "Could not restart Nagios. Init script not found !."
+		echo "ERROR: Could not find nagios init script in /etc/init.d/. Please reload nagios manually!" | logger
+		return 1
+	fi
+}
+
+
+function get_service_by_port() {
+	F_SERVICE_PORT=$1
+	F_SERVICE_NAME=`grep "$F_SERVICE_PORT/tcp" /etc/services | awk '{ print $1":"$2}' | grep ":$F_SERVICE_PORT/tcp" | cut -d':' -f1 | head -n1`
+	if [ "$F_SERVICE_NAME" == "" ]; then
+		F_SERVICE_NAME="p$F_SERVICE_PORT"
+	fi
+	echo "$F_SERVICE_NAME"
+}
+
+
+# get parameters
+FULL_COMMANDLINE="$0 $@"
+NAGIOS_CHECK_CMD=$1
+shift
+
+while [ $# -ne 0 ]; do
+	case "$1" in
+		-n)
+			APPLIANCE_NAME=$2
+			shift
+			;;
+		-i)
+			RESOURCE_IP=$2
+			shift
+			;;
+		-p)
+			SERVICE_PORT_LIST=$2
+			shift
+			;;
+		-t)
+			NAGIOS_AUTOMAP_TOGGLE=$2
+			shift
+			;;
+		-m)
+			NAGIOS_EVENT_MESSAGE=$2
+			shift
+			;;
+		-s)
+			NAGIOS_SERVICE_ERROR=$2
+			shift
+			;;
+		--openqrm-ui-user)
+			OPENQRM_UI_USER=$2
+			shift
+			;;
+		--openqrm-internal-cmd)
+			OPENQRM_INTERNAL_CMD=$2
+			shift
+			;;
+		--openqrm-cmd-mode)
+			OPENQRM_CMD_MODE=$2
+			shift
+			;;
+		*)
+			if [ "$NON_BLOCKING" != "true" ]; then
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+			fi
+			echo "ERROR: Free commandline arguments are not allowed"
+			nagios_manager_usage
+			exit 6
+			;;
+	esac
+	shift
+done
+
+if [ "$OPENQRM_UI_USER" != "" ]; then
+	OPENQRM_UI_USER_PARAMETER=" --openqrm-ui-user $OPENQRM_UI_USER"
+fi
+
+
+# main
+case "$NAGIOS_CHECK_CMD" in
+	map)
+
+		LOCK_TIME=`openqrm_lock_queue aquire nagios`
+		trap "openqrm_lock_queue release nagios $LOCK_TIME" EXIT
+
+		echo "Mapping the openQRM network"
+		# for now quite simple gathering of which network to map
+		OPENQRM_NETWORK=`echo $OPENQRM_SERVER_IP_ADDRESS | cut -d'.' -f1-3`".*"
+		openqrm_post_event 0 "map" 5 "openqrm-nagios-manager" "Starting to map the openQRM network!"
+		openqrm_post_event 0 "nagios3" 9 "openqrm-nagios-manager" "Nagios is currently mapping the openQRM network!"
+		if ! nmap --system-dns -sS -O -oX $SUBNETFILE $OPENQRM_NETWORK; then
+			openqrm_post_event 0 "nagios3" 10 "openqrm-nagios-manager" "Nagios is currently mapping the openQRM network!"
+			openqrm_post_event 0 "map" 3 "openqrm-nagios-manager" "Mapping the openQRM network failed!"
+
+			openqrm_lock_queue release nagios $LOCK_TIME
+			trap '' EXIT
+
+			exit 1
+		fi
+		openqrm_post_event 0 "map" 5 "openqrm-nagios-manager" "Mapping finished, generating the Nagios configuration!"
+		cd $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/bin
+		./nmap2nagios-ng.pl -i -d -r $SUBNETFILE -o $NAGIOS_GENERATED_CONF
+		# fix check_ping in generated config
+		sed -i -e "s#check_ping#check_ping!100.0,20%!500.0,60%#" $NAGIOS_GENERATED_CONF
+		# fix check_dig in generated config
+		sed -i -e "s#check_dig#check_dig!google.com#" $NAGIOS_GENERATED_CONF
+		cd $CURRENTDIR
+		# check if the new config is valid
+		if $NAGIOS_BINARY -v $NAGIOS_ETC_DIRECTORY/nagios.cfg; then
+			# quick hack to support icinga
+			if [ "$NAGIOS3_ICINGA_CONF_DIRECTORY" != "" ]; then
+				ln -sf $NAGIOS_GENERATED_CONF $NAGIOS3_ICINGA_CONF_DIRECTORY/openqrm-network.cfg
+			fi
+			reload_nagios
+
+			openqrm_lock_queue release nagios $LOCK_TIME
+			trap '' EXIT
+
+			openqrm_post_event 0 "nagios3" 10 "openqrm-nagios-manager" "Nagios is currently mapping the openQRM network!"
+			openqrm_post_event 0 "map" 5 "openqrm-nagios-manager" "Automatic Nagios configuration finished successfully"
+		else
+			rm -f $NAGIOS_GENERATED_CONF
+			openqrm_post_event 0 "nagios3" 10 "openqrm-nagios-manager" "Nagios is currently mapping the openQRM network!"
+			openqrm_post_event 0 "map" 3 "openqrm-nagios-manager" "The generated nagios-configuration contains errors! Please check manually."
+
+			openqrm_lock_queue release nagios $LOCK_TIME
+			trap '' EXIT
+
+			exit 1
+		fi
+		;;
+
+	automap)
+		echo "openqrm-nagios-manager->automap"
+		case "$NAGIOS_AUTOMAP_TOGGLE" in
+			on)
+				LOCK_TIME=`openqrm_lock_queue aquire nagios`
+				trap "openqrm_lock_queue release nagios $LOCK_TIME" EXIT
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+				# for the web-status
+				touch $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/web/.automap
+				# create cron job which will update the svn repo with files which were added by the web gui
+				cat $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/etc/cron.d/openqrm-nagios3-automap.cron | \
+				sed -e "s#@@OPENQRM_SERVER_BASE_DIR@@#$OPENQRM_SERVER_BASE_DIR#g" > /etc/cron.d/openqrm-nagios3-automap
+				reload_cron
+				openqrm_post_event 0 "automap" 5 "openqrm-nagios-manager" "Enabling auto-mapping of the openQRM-network"
+
+				openqrm_lock_queue release nagios $LOCK_TIME
+				trap '' EXIT
+				;;
+
+			off)
+				LOCK_TIME=`openqrm_lock_queue aquire nagios`
+				trap "openqrm_lock_queue release nagios $LOCK_TIME" EXIT
+				openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+				rm -f $OPENQRM_SERVER_BASE_DIR/openqrm/plugins/nagios3/web/.automap
+				rm -f /etc/cron.d/openqrm-nagios3-automap
+				reload_cron
+				openqrm_post_event 0 "automap" 5 "openqrm-nagios-manager" "Disabling auto-mapping of the openQRM-network"
+
+				openqrm_lock_queue release nagios $LOCK_TIME
+				trap '' EXIT
+				;;
+		esac
+		exit 0
+		;;
+
+	add)
+		LOCK_TIME=`openqrm_lock_queue aquire nagios`
+		trap "openqrm_lock_queue release nagios $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		SERVICE_PORT_LIST=`echo $SERVICE_PORT_LIST | sed -e "s/,/ /g"`
+		# reset existing service for now
+		rm -f $NAGIOS_CONF_DIR/$APPLIANCE_NAME.*.service.config.cfg
+		for SERVICE_PORT in `echo $SERVICE_PORT_LIST`; do
+			SERVICE_NAME=`get_service_by_port $SERVICE_PORT`
+			echo "openqrm-nagios-manager->adding appliance $APPLIANCE_NAME/$RESOURCE_IP/$SERVICE_NAME/$SERVICE_PORT"
+			APPLIANCE_HOST_CONFIG="$NAGIOS_CONF_DIR/$APPLIANCE_NAME.host.cfg"
+			APPLIANCE_SERVICE_TEMPLATE="$NAGIOS_CONF_DIR/$APPLIANCE_NAME.service.template.cfg"
+			APPLIANCE_SERVICE_CONFIG="$NAGIOS_CONF_DIR/$APPLIANCE_NAME.$SERVICE_NAME.service.config.cfg"
+			# generate host
+			cat $OPENQRM_APPLIANCE_HOST_TEMPLATE | \
+				sed -e "s#@@APPLIANCE_NAME@@#$APPLIANCE_NAME#g" | \
+				sed -e "s#@@RESOURCE_IP@@#$RESOURCE_IP#g" \
+				> $APPLIANCE_HOST_CONFIG
+			# generate service default template
+			cat $OPENQRM_APPLIANCE_DEFAULT_SERVICE_TEMPLATE | \
+				sed -e "s#@@APPLIANCE_NAME@@#$APPLIANCE_NAME#g" \
+				> $APPLIANCE_SERVICE_TEMPLATE
+			# generate service config
+			cat $OPENQRM_APPLIANCE_SERVICE_TEMPLATE | \
+				sed -e "s#@@OPENQRM_SERVER_BASE_DIR@@#$OPENQRM_SERVER_BASE_DIR#g" | \
+				sed -e "s#@@APPLIANCE_NAME@@#$APPLIANCE_NAME#g" | \
+				sed -e "s#@@SERVICE_NAME@@#$SERVICE_NAME.$APPLIANCE_NAME#g" | \
+				sed -e "s#@@SERVICE_PORT@@#$SERVICE_PORT#g" \
+				> $APPLIANCE_SERVICE_CONFIG
+
+			# quick hack to support icinga
+			if [ "$NAGIOS3_ICINGA_CONF_DIRECTORY" != "" ]; then
+				ln -sf $APPLIANCE_HOST_CONFIG $NAGIOS3_ICINGA_CONF_DIRECTORY/$APPLIANCE_NAME.host.cfg
+				ln -sf $APPLIANCE_SERVICE_TEMPLATE $NAGIOS3_ICINGA_CONF_DIRECTORY/$APPLIANCE_NAME.service.template.cfg
+				ln -sf $APPLIANCE_SERVICE_CONFIG $NAGIOS3_ICINGA_CONF_DIRECTORY/$APPLIANCE_NAME.$SERVICE_NAME.service.config.cfg
+			fi
+
+			# check for each part of the configuration
+			if ! $NAGIOS_BINARY -v $NAGIOS_ETC_DIRECTORY/nagios.cfg; then
+				# remove completely
+				rm -f $NAGIOS_CONF_DIR/$APPLIANCE_NAME.*
+				# quick hack to support icinga
+				if [ "$NAGIOS3_ICINGA_CONF_DIRECTORY" != "" ]; then
+					rm -f $NAGIOS3_ICINGA_CONF_DIRECTORY/$APPLIANCE_NAME.*
+				fi
+				openqrm_post_event 0 "add" 2 "openqrm-nagios-manager" "Failed to add $SERVICE_NAME to $APPLIANCE_NAME! Reverting configuration ..."
+				break
+			fi
+
+		done
+
+		reload_nagios
+
+		openqrm_lock_queue release nagios $LOCK_TIME
+		trap '' EXIT
+		exit 0
+		;;
+
+	remove_host)
+		LOCK_TIME=`openqrm_lock_queue aquire nagios`
+		trap "openqrm_lock_queue release nagios $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		echo "openqrm-nagios-manager->removing appliance $APPLIANCE_NAME/$RESOURCE_IP"
+		# remove service config
+		rm -f $NAGIOS_CONF_DIR/$APPLIANCE_NAME.*
+		# quick hack to support icinga
+		if [ "$NAGIOS3_ICINGA_CONF_DIRECTORY" != "" ]; then
+			rm -f $NAGIOS3_ICINGA_CONF_DIRECTORY/$APPLIANCE_NAME.*
+		fi
+		reload_nagios
+
+		openqrm_lock_queue release nagios $LOCK_TIME
+		trap '' EXIT
+		exit 0
+		;;
+
+	remove_service)
+		LOCK_TIME=`openqrm_lock_queue aquire nagios`
+		trap "openqrm_lock_queue release nagios $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		SERVICE_PORT_LIST=`echo $SERVICE_PORT_LIST | sed -e "s/,/ /g"`
+		for SERVICE_PORT in `echo $SERVICE_PORT_LIST`; do
+			SERVICE_NAME=`get_service_by_port $SERVICE_PORT`
+			echo "openqrm-nagios-manager->removing $SERVICE_NAME/$SERVICE_PORT from appliance $APPLIANCE_NAME"
+			APPLIANCE_SERVICE_CONFIG="$NAGIOS_CONF_DIR/$APPLIANCE_NAME.$SERVICE_NAME.service.config.cfg"
+			# remove service config
+			rm -f $APPLIANCE_SERVICE_CONFIG
+			# quick hack to support icinga
+			if [ "$NAGIOS3_ICINGA_CONF_DIRECTORY" != "" ]; then
+				rm -f $NAGIOS3_ICINGA_CONF_DIRECTORY/$APPLIANCE_NAME.$SERVICE_NAME.service.config.cfg
+			fi
+		done
+		reload_nagios
+
+		openqrm_lock_queue release nagios $LOCK_TIME
+		trap '' EXIT
+		exit 0
+		;;
+
+	update_nagios)
+		LOCK_TIME=`openqrm_lock_queue aquire nagios`
+		trap "openqrm_lock_queue release nagios $LOCK_TIME" EXIT
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+
+		echo "openqrm-nagios-manager->reloading nagios"
+		reload_nagios
+
+		openqrm_lock_queue release nagios $LOCK_TIME
+		trap '' EXIT
+		exit 0
+		;;
+
+	event)
+		echo "openqrm-nagios-manager->event"
+		NAGIOS_SERVICE_ERROR=`echo $NAGIOS_SERVICE_ERROR | cut -d'.' -f1`
+		openqrm_post_event 0 "nagios" 2 "openqrm-nagios-manager" "Service $NAGIOS_SERVICE_ERROR on appliance $APPLIANCE_NAME in state : $NAGIOS_EVENT_MESSAGE"
+		exit 0
+		;;
+
+
+	*)
+		openqrm_unblock_starting_queue $FULL_COMMANDLINE
+		nagios_manager_usage
+		exit 1
+		;;
+esac
